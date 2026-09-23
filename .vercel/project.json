@@ -1,0 +1,16 @@
+{
+  "projectId": "prj_pWnekCj5xrwncB5HVwwC3CjkiLOy",
+  "orgId": "team_hnYW6BEu9E2efHRpymxFUtTr",
+  "projectName": "accessible-coding",
+  "settings": {
+    "createdAt": 1790180980235,
+    "framework": null,
+    "devCommand": null,
+    "installCommand": null,
+    "buildCommand": null,
+    "outputDirectory": null,
+    "rootDirectory": null,
+    "directoryListing": false,
+    "nodeVersion": "24.x"
+  }
+}

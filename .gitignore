@@ -30,3 +30,8 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Vercel (keep project.json, ignore local env + build output)
+.vercel/.env*
+.vercel/output/
+.vercel/README.txt
