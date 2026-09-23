@@ -94,7 +94,7 @@ accessible-coding/
 3. Write Python, press **Run** (or `Ctrl+Enter`)
 
 ### Browser (Web)
-Visit the deployed site (Vercel/Streamlit Cloud — link TBD).
+**Live site:** [https://accessible-coding.vercel.app](https://accessible-coding.vercel.app)
 
 ### Development
 ```bash
