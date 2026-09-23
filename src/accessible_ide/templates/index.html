@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AccessibleIDE - Code comfortably</title>
+  <meta name="description" content="A fully accessible IDE for dyslexic and neurodivergent learners.">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/codemirror.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    @font-face {
+      font-family: 'OpenDyslexic3';
+      src: url('{{ url_for('main.serve_font', filename='OpenDyslexic3-Regular.otf') }}') format('opentype');
+      font-weight: normal;
+    }
+    @font-face {
+      font-family: 'OpenDyslexic3';
+      src: url('{{ url_for('main.serve_font', filename='OpenDyslexic3-Bold.otf') }}') format('opentype');
+      font-weight: bold;
+    }
+    @font-face {
+      font-family: 'Atkinson Hyperlegible';
+      src: url('{{ url_for('main.serve_font', filename='AtkinsonHyperlegible-Regular.ttf') }}') format('truetype');
+      font-weight: normal;
+    }
+    @font-face {
+      font-family: 'Atkinson Hyperlegible';
+      src: url('{{ url_for('main.serve_font', filename='AtkinsonHyperlegible-Bold.ttf') }}') format('truetype');
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body data-theme="{{ config.theme }}" data-font="{{ config.font }}" data-font-size="{{ config.font_size }}" data-line-height="{{ config.line_height }}" data-letter-spacing="{{ config.letter_spacing }}" data-focus-mode="{{ config.focus_mode }}" data-blur-intensity="{{ config.blur_intensity }}">
+
+  <a class="skip-link" href="#editor">Skip to editor</a>
+
+  <header class="topbar" role="banner">
+    <div class="brand">
+      <span class="brand-logo" aria-hidden="true">&#128214;</span>
+      <h1 class="brand-name">AccessibleIDE</h1>
+      <span class="version-badge">v0.1.0-beta</span>
+    </div>
+
+    <div class="toolbar" role="toolbar" aria-label="Editor tools">
+      <button id="btn-run" class="btn btn-primary" title="Run code (Ctrl+Enter)">
+        <span aria-hidden="true">&#9654;</span> Run
+      </button>
+
+      <div class="tool-group">
+        <label for="font-select" class="visually-hidden">Font</label>
+        <select id="font-select" class="tool-select">
+          {% for key, font in fonts.items() %}
+          <option value="{{ key }}" {% if config.font == key %}selected{% endif %}>{{ font.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="tool-group">
+        <label for="font-size" class="visually-hidden">Font size</label>
+        <input type="range" id="font-size" min="12" max="28" step="1" value="{{ config.font_size }}" aria-label="Font size">
+        <span id="font-size-label" class="tool-label">{{ config.font_size }}px</span>
+      </div>
+
+      <div class="tool-group">
+        <label for="theme-select" class="visually-hidden">Theme</label>
+        <select id="theme-select" class="tool-select">
+          {% for key, theme in themes.items() %}
+          <option value="{{ key }}" {% if config.theme == key %}selected{% endif %}>{{ theme.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="tool-group">
+        <label for="focus-mode" class="visually-hidden">Focus mode</label>
+        <select id="focus-mode" class="tool-select">
+          <option value="off" {% if config.focus_mode == 'off' %}selected{% endif %}>Focus: Off</option>
+          <option value="gutter" {% if config.focus_mode == 'gutter' %}selected{% endif %}>Focus: Hide gutter</option>
+          <option value="lines" {% if config.focus_mode == 'lines' %}selected{% endif %}>Focus: Blur other lines</option>
+        </select>
+      </div>
+
+      <div class="tool-group">
+        <label for="tts-toggle" class="visually-hidden">Text to speech</label>
+        <button id="tts-toggle" class="btn btn-toggle {% if config.tts_enabled %}active{% endif %}" aria-pressed="{% if config.tts_enabled %}true{% else %}false{% endif %}" title="Read code aloud">
+          <span aria-hidden="true">&#128266;</span> TTS
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="workspace" role="main">
+    <section class="editor-pane" aria-label="Code editor">
+      <div id="editor" class="editor" role="textbox" aria-label="Python code editor" aria-multiline="true"></div>
+    </section>
+
+    <section class="output-pane" aria-label="Output">
+      <div class="output-header">
+        <h2 class="output-title">Output</h2>
+        <button id="btn-clear" class="btn btn-small">Clear</button>
+      </div>
+      <pre id="output" class="output" aria-live="polite"></pre>
+      <div id="error-panel" class="error-panel" role="alert" hidden>
+        <h3 class="error-title">&#9888; Something went wrong</h3>
+        <p id="error-message" class="error-message"></p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer" role="contentinfo">
+    <p>AccessibleIDE &mdash; built with empathy for dyslexic and neurodivergent learners. <a href="https://github.com/hothilux-21/accessible-coding" target="_blank" rel="noopener">GitHub</a></p>
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/codemirror.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/python.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/matchbrackets.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/active-line.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

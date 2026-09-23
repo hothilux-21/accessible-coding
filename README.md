@@ -86,23 +86,35 @@ accessible-coding/
 
 ---
 
-## 🚀 Getting Started (Once Built)
+## 🚀 Getting Started
 
-### Browser (Recommended)
-```bash
-# Visit the deployed site (TBD)
-```
+### Windows Desktop (.exe)
+1. Download `AccessibleIDE.exe` from the [Releases](https://github.com/hothilux-21/accessible-coding/releases) page
+2. Double-click to run — it opens your browser with the IDE
+3. Write Python, press **Run** (or `Ctrl+Enter`)
 
-### Windows Desktop
-```bash
-# Download latest .exe from Releases
-```
+### Browser (Web)
+Visit the deployed site (Vercel/Streamlit Cloud — link TBD).
 
 ### Development
 ```bash
 git clone https://github.com/hothilux-21/accessible-coding.git
 cd accessible-coding
-# Setup instructions TBD after stack finalization
+pip install -r requirements.txt
+python app.py
+# Open http://localhost:5000
+```
+
+### Build the exe yourself
+```bash
+pip install pyinstaller
+pyinstaller AccessibleIDE.spec --noconfirm
+# Output: dist/AccessibleIDE.exe
+```
+
+### Run tests
+```bash
+python smoke_test.py
 ```
 
 ---

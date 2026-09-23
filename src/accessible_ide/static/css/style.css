@@ -1,0 +1,414 @@
+/* ============================================================
+   AccessibleIDE - Styles
+   WCAG 2.1 AA: high contrast, large targets, clear focus states
+   ============================================================ */
+
+:root {
+  --bg: #0d0d0d;
+  --fg: #ffffff;
+  --accent: #ffd93d;
+  --accent-fg: #0d0d0d;
+  --panel-bg: #1a1a1a;
+  --panel-border: #333333;
+  --muted: #aaaaaa;
+  --error-bg: #2b0a0a;
+  --error-border: #ff6b6b;
+  --error-fg: #ffb3b3;
+  --focus-ring: #ffd93d;
+  --font-family: "Atkinson Hyperlegible", sans-serif;
+  --font-size: 16px;
+  --line-height: 1.6;
+  --letter-spacing: 0.5px;
+}
+
+/* ---------- Theme: High Contrast (default) ---------- */
+body[data-theme="high-contrast"] {
+  --bg: #0d0d0d;
+  --fg: #ffffff;
+  --accent: #ffd93d;
+  --accent-fg: #0d0d0d;
+  --panel-bg: #1a1a1a;
+  --panel-border: #444444;
+  --muted: #cccccc;
+  --error-bg: #2b0a0a;
+  --error-border: #ff6b6b;
+  --error-fg: #ffb3b3;
+  --focus-ring: #ffd93d;
+}
+
+/* ---------- Theme: Dark ---------- */
+body[data-theme="dark"] {
+  --bg: #1e1e1e;
+  --fg: #d4d4d4;
+  --accent: #569cd6;
+  --accent-fg: #ffffff;
+  --panel-bg: #252526;
+  --panel-border: #3c3c3c;
+  --muted: #858585;
+  --error-bg: #2d1a1a;
+  --error-border: #f48771;
+  --error-fg: #f48771;
+  --focus-ring: #569cd6;
+}
+
+/* ---------- Theme: Pastel ---------- */
+body[data-theme="pastel"] {
+  --bg: #fdf6e3;
+  --fg: #586e75;
+  --accent: #cb4b16;
+  --accent-fg: #ffffff;
+  --panel-bg: #eee8d5;
+  --panel-border: #d5cba8;
+  --muted: #93a1a1;
+  --error-bg: #fbe3e3;
+  --error-border: #cb4b16;
+  --error-fg: #a03d10;
+  --focus-ring: #cb4b16;
+}
+
+/* ---------- Theme: Light ---------- */
+body[data-theme="light"] {
+  --bg: #ffffff;
+  --fg: #333333;
+  --accent: #0057b8;
+  --accent-fg: #ffffff;
+  --panel-bg: #f5f5f5;
+  --panel-border: #dddddd;
+  --muted: #666666;
+  --error-bg: #fdeaea;
+  --error-border: #cc0000;
+  --error-fg: #990000;
+  --focus-ring: #0057b8;
+}
+
+/* ---------- Base ---------- */
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-family);
+  font-size: var(--font-size);
+  line-height: var(--line-height);
+  letter-spacing: var(--letter-spacing);
+  display: flex;
+  flex-direction: column;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+/* ---------- Accessibility helpers ---------- */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 8px;
+  z-index: 1000;
+  background: var(--accent);
+  color: var(--accent-fg);
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-weight: bold;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 8px;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* ---------- Top bar ---------- */
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--panel-bg);
+  border-bottom: 2px solid var(--panel-border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-logo {
+  font-size: 1.6em;
+}
+
+.brand-name {
+  margin: 0;
+  font-size: 1.2em;
+  font-weight: bold;
+}
+
+.version-badge {
+  font-size: 0.75em;
+  background: var(--accent);
+  color: var(--accent-fg);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: bold;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.tool-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tool-select {
+  font-family: inherit;
+  font-size: 0.95em;
+  padding: 6px 10px;
+  border: 2px solid var(--panel-border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+  min-height: 38px;
+}
+
+.tool-label {
+  font-size: 0.85em;
+  color: var(--muted);
+  min-width: 40px;
+  text-align: center;
+}
+
+input[type="range"] {
+  width: 100px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  font-family: inherit;
+  font-size: 1em;
+  font-weight: bold;
+  padding: 8px 16px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  min-height: 38px;
+  transition: transform 0.1s ease, background 0.2s ease;
+}
+
+.btn:active { transform: scale(0.97); }
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.btn-primary:hover {
+  filter: brightness(1.1);
+}
+
+.btn-toggle {
+  background: var(--bg);
+  color: var(--fg);
+  border-color: var(--panel-border);
+}
+
+.btn-toggle.active {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+
+.btn-small {
+  font-size: 0.85em;
+  padding: 4px 10px;
+  min-height: 30px;
+  background: var(--bg);
+  color: var(--fg);
+  border-color: var(--panel-border);
+}
+
+.btn-small:hover {
+  border-color: var(--accent);
+}
+
+/* ---------- Workspace ---------- */
+.workspace {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.editor-pane {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.editor {
+  position: absolute;
+  inset: 0;
+  font-size: var(--font-size);
+  line-height: var(--line-height);
+  letter-spacing: var(--letter-spacing);
+}
+
+/* CodeMirror overrides */
+.CodeMirror {
+  height: 100%;
+  font-family: var(--font-family) !important;
+  font-size: var(--font-size) !important;
+  line-height: var(--line-height) !important;
+  letter-spacing: var(--letter-spacing) !important;
+}
+
+.CodeMirror-lines {
+  padding: 12px 0;
+}
+
+.CodeMirror-gutters {
+  border-right: 1px solid var(--panel-border);
+}
+
+/* Focus mode: hide gutter */
+body[data-focus-mode="gutter"] .CodeMirror-gutters {
+  display: none;
+}
+
+/* Focus mode: blur non-active lines */
+body[data-focus-mode="lines"] .CodeMirror-line:not(.CodeMirror-activeline-background) {
+  opacity: 0.45;
+  transition: opacity 0.2s ease;
+}
+
+body[data-focus-mode="lines"] .CodeMirror-line.CodeMirror-activeline-background {
+  opacity: 1;
+}
+
+/* ---------- Output pane ---------- */
+.output-pane {
+  border-top: 2px solid var(--panel-border);
+  background: var(--panel-bg);
+  max-height: 35%;
+  display: flex;
+  flex-direction: column;
+  min-height: 120px;
+}
+
+.output-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.output-title {
+  margin: 0;
+  font-size: 0.95em;
+  font-weight: bold;
+}
+
+.output {
+  flex: 1;
+  margin: 0;
+  padding: 12px 16px;
+  overflow: auto;
+  font-family: "Courier New", monospace;
+  font-size: 0.95em;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--fg);
+}
+
+/* ---------- Error panel ---------- */
+.error-panel {
+  margin: 0 16px 12px;
+  padding: 12px 16px;
+  background: var(--error-bg);
+  border: 2px solid var(--error-border);
+  border-radius: 8px;
+  color: var(--error-fg);
+}
+
+.error-title {
+  margin: 0 0 6px;
+  font-size: 1em;
+  font-weight: bold;
+}
+
+.error-message {
+  margin: 0;
+  font-size: 1em;
+  line-height: 1.5;
+}
+
+/* ---------- Footer ---------- */
+.footer {
+  padding: 8px 16px;
+  background: var(--panel-bg);
+  border-top: 1px solid var(--panel-border);
+  font-size: 0.85em;
+  color: var(--muted);
+  text-align: center;
+}
+
+.footer a {
+  color: var(--accent);
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 768px) {
+  .topbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .toolbar {
+    margin-left: 0;
+    justify-content: center;
+  }
+  .brand {
+    justify-content: center;
+  }
+  .output-pane {
+    max-height: 45%;
+  }
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

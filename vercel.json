@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "wsgi.py",
+      "use": "@vercel/python",
+      "config": { "maxLambdaSize": "15mb" }
+    }
+  ],
+  "routes": [
+    { "src": "/assets/fonts/(.*)", "dest": "/wsgi.py" },
+    { "src": "/static/(.*)", "dest": "/wsgi.py" },
+    { "src": "/(.*)", "dest": "/wsgi.py" }
+  ]
+}
