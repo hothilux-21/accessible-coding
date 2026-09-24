@@ -51,7 +51,8 @@ Jump to any section:
 ## Try it now
 
 - **Web app:** [https://accessible-coding.onrender.com](https://accessible-coding.onrender.com)
-- **Windows exe:** download `AccessibleIDE.exe` from the [Releases page](https://github.com/hothilux-21/accessible-coding/releases)
+- **Windows installer (recommended):** download `AccessibleIDE-Setup.exe` from the [latest build](https://github.com/hothilux-21/accessible-coding/releases/latest/download/AccessibleIDE-Setup.exe) — installs the app to any folder, installs Python and adds it to PATH, and creates shortcuts
+- **Windows exe (portable):** download `AccessibleIDE.exe` from the [latest build](https://github.com/hothilux-21/accessible-coding/releases/latest/download/AccessibleIDE.exe)
 
 [↑ Back to contents](#contents) · [↓ Next: Getting started](#getting-started)
 
@@ -59,11 +60,20 @@ Jump to any section:
 
 ## Getting started
 
-### Windows desktop (.exe)
+### Windows installer (recommended)
+
+1. Download `AccessibleIDE-Setup.exe` from the [latest build](https://github.com/hothilux-21/accessible-coding/releases/latest/download/AccessibleIDE-Setup.exe)
+2. Run it. Choose any install folder.
+3. Tick **Install Python and add it to PATH** (on by default) — this also installs the Microsoft Visual C++ runtime.
+4. Finish, and the IDE opens in your browser. Write Python, then press **Run** (or `Ctrl+Enter`).
+
+### Windows portable (.exe)
 
 1. Download `AccessibleIDE.exe` from the [latest build](https://github.com/hothilux-21/accessible-coding/releases/latest/download/AccessibleIDE.exe) (always matches the web app)
 2. Double-click to run. Your browser opens with the IDE.
 3. Write Python, then press **Run** (or `Ctrl+Enter`).
+
+> If Windows shows "Windows protected your PC", click **More info** then **Run anyway** — the app is not code-signed yet.
 
 ### Browser (web)
 

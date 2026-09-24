@@ -42,9 +42,43 @@ jobs:
           name: AccessibleIDE-windows
           path: dist/AccessibleIDE.exe
 
+  build-installer:
+    name: Build Setup installer
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install flask pyinstaller
+      - name: Build onedir app
+        run: pyinstaller AccessibleIDE-onedir.spec --noconfirm
+      - name: Download installer prerequisites
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "installer\prereqs" -Force | Out-Null
+          Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.13.15/python-3.13.15-amd64.exe" -OutFile "installer\prereqs\python-3.13.15-amd64.exe" -UseBasicParsing
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "installer\prereqs\vc_redist.x64.exe" -UseBasicParsing
+      - name: Install Inno Setup
+        run: winget install --id JRSoftware.InnoSetup --accept-source-agreements --accept-package-agreements --silent
+      - name: Compile installer
+        shell: pwsh
+        run: |
+          $iscc = Get-ChildItem "C:\Program Files*\Inno Setup*\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) { $iscc = Get-ChildItem "$env:LOCALAPPDATA\Programs\Inno Setup*\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 }
+          if (-not $iscc) { throw "ISCC.exe not found" }
+          & $iscc.FullName installer.iss
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AccessibleIDE-Setup
+          path: installer/AccessibleIDE-Setup.exe
+
   release:
     name: Create GitHub Release
-    needs: build-windows
+    needs: [build-windows, build-installer]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
@@ -54,9 +88,16 @@ jobs:
         with:
           name: AccessibleIDE-windows
           path: release/
+      - name: Download installer
+        uses: actions/download-artifact@v4
+        with:
+          name: AccessibleIDE-Setup
+          path: release/
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release/AccessibleIDE.exe
+          files: |
+            release/AccessibleIDE.exe
+            release/AccessibleIDE-Setup.exe
           generate_release_notes: true
           prerelease: true

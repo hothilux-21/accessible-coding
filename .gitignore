@@ -38,3 +38,7 @@ htmlcov/
 
 # Security scan output
 bandit_report.json
+
+# Installer build artifacts (downloaded/built during CI)
+installer/prereqs/
+installer/*.exe
