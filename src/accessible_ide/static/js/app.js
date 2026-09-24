@@ -14,6 +14,10 @@
   var btnRun = document.getElementById('btn-run');
   var btnClear = document.getElementById('btn-clear');
   var btnTts = document.getElementById('tts-toggle');
+  var btnSave = document.getElementById('btn-save');
+  var btnOpen = document.getElementById('btn-open');
+  var btnReadLine = document.getElementById('btn-read-line');
+  var fileInput = document.getElementById('file-input');
   var fontSelect = document.getElementById('font-select');
   var fontSize = document.getElementById('font-size');
   var fontSizeLabel = document.getElementById('font-size-label');
@@ -135,10 +139,33 @@
   }
 
   // ---------- Run code ----------
+  var errorMarkers = [];
+
+  function clearErrorMarkers() {
+    errorMarkers.forEach(function (m) { m.clear(); });
+    errorMarkers = [];
+  }
+
+  function highlightErrorLine(lineNumber) {
+    clearErrorMarkers();
+    if (!lineNumber) return;
+    var line = lineNumber - 1; // CodeMirror lines are 0-based
+    if (line < 0 || line >= editor.lineCount()) return;
+    var marker = editor.markText(
+      { line: line, ch: 0 },
+      { line: line, ch: editor.getLine(line).length },
+      { className: 'cm-error-line' }
+    );
+    errorMarkers.push(marker);
+    editor.scrollIntoView({ line: line, ch: 0 }, 100);
+    editor.setCursor({ line: line, ch: 0 });
+  }
+
   function runCode() {
     var code = editor.getValue();
     outputEl.textContent = 'Running...';
     errorPanel.hidden = true;
+    clearErrorMarkers();
 
     fetch('/api/run', {
       method: 'POST',
@@ -151,6 +178,7 @@
         if (data.error) {
           errorMessage.textContent = data.error;
           errorPanel.hidden = false;
+          highlightErrorLine(data.error_line);
           if (ttsEnabled) speak(data.error);
         } else {
           errorPanel.hidden = true;
@@ -162,6 +190,77 @@
         errorMessage.textContent = 'The server is not responding. Please try again.';
         errorPanel.hidden = false;
       });
+  }
+
+  // ---------- Save / Open files ----------
+  function saveFile() {
+    var content = editor.getValue();
+    var suggestedName = 'my_code.py';
+
+    if (window.showSaveFilePicker) {
+      window.showSaveFilePicker({
+        suggestedName: suggestedName,
+        types: [{ description: 'Python file', accept: { 'text/x-python': ['.py'] } }]
+      })
+        .then(function (handle) { return handle.createWritable(); })
+        .then(function (writable) {
+          return writable.write(content).then(function () { return writable.close(); });
+        })
+        .then(function () {
+          outputEl.textContent = 'File saved.';
+          errorPanel.hidden = true;
+        })
+        .catch(function (err) {
+          if (err.name !== 'AbortError') {
+            outputEl.textContent = 'Could not save the file.';
+          }
+        });
+    } else {
+      // Fallback: download the file
+      var blob = new Blob([content], { type: 'text/x-python' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = suggestedName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      outputEl.textContent = 'File downloaded.';
+      errorPanel.hidden = true;
+    }
+  }
+
+  function openFile() {
+    if (window.showOpenFilePicker) {
+      window.showOpenFilePicker({
+        types: [{ description: 'Python file', accept: { 'text/x-python': ['.py'] } }]
+      })
+        .then(function (handles) { return handles[0].getFile(); })
+        .then(function (file) { return file.text(); })
+        .then(function (text) {
+          editor.setValue(text);
+          clearErrorMarkers();
+          outputEl.textContent = 'File opened.';
+          errorPanel.hidden = true;
+        })
+        .catch(function (err) {
+          if (err.name !== 'AbortError') {
+            outputEl.textContent = 'Could not open the file.';
+          }
+        });
+    } else {
+      fileInput.click();
+    }
+  }
+
+  // ---------- Read line aloud ----------
+  function readLine() {
+    var selection = editor.getSelection();
+    var text = selection || editor.getLine(editor.getCursor().line);
+    if (text && text.trim()) {
+      speak(text);
+    }
   }
 
   // ---------- TTS ----------
@@ -181,6 +280,26 @@
     outputEl.textContent = '';
     errorPanel.hidden = true;
   });
+
+  btnSave.addEventListener('click', saveFile);
+
+  btnOpen.addEventListener('click', openFile);
+
+  fileInput.addEventListener('change', function () {
+    var file = fileInput.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      editor.setValue(reader.result);
+      clearErrorMarkers();
+      outputEl.textContent = 'File opened.';
+      errorPanel.hidden = true;
+    };
+    reader.readAsText(file);
+    fileInput.value = '';
+  });
+
+  btnReadLine.addEventListener('click', readLine);
 
   btnTts.addEventListener('click', function () {
     ttsEnabled = !ttsEnabled;

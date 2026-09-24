@@ -20,10 +20,12 @@ print('POST /api/run ->', r2.status_code, r2.get_json())
 # Test run code (error)
 r3 = c.post('/api/run', json={'code': 'x = 1/0'})
 print('POST /api/run (error) ->', r3.get_json())
+assert r3.get_json().get('error_line') is not None, 'error_line missing for runtime error'
 
 # Test run code (syntax error)
 r4 = c.post('/api/run', json={'code': 'def foo(:\n    pass'})
 print('POST /api/run (syntax) ->', r4.get_json())
+assert r4.get_json().get('error_line') is not None, 'error_line missing for syntax error'
 
 # Test config
 r5 = c.get('/api/config')

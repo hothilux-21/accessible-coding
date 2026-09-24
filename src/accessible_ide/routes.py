@@ -147,10 +147,13 @@ def save_config(config):
 
 
 def translate_error(error_output):
-    """Convert Python traceback to plain English."""
+    """Convert Python traceback to plain English.
+
+    Returns a tuple: (friendly_message, line_number_or_None).
+    """
     lines = error_output.strip().split('\n')
     if not lines:
-        return "An unknown error occurred."
+        return "An unknown error occurred.", None
     
     # Get the last line (actual error)
     last_line = lines[-1].strip()
@@ -186,18 +189,24 @@ def translate_error(error_output):
     if error_type:
         friendly = translations[error_type]
         # Add line number if available
+        line_number = None
         for line in reversed(lines):
             if 'line' in line and '.py' in line:
                 parts = line.split(',')
                 for part in parts:
                     if 'line' in part:
+                        # Extract the number (e.g. "line 12")
+                        import re
+                        match = re.search(r'line\s+(\d+)', part)
+                        if match:
+                            line_number = int(match.group(1))
                         friendly += f' (around {part.strip()})'
                         break
                 break
-        return friendly
+        return friendly, line_number
     
     # Fallback: return last line simplified
-    return f"Error: {last_line}"
+    return f"Error: {last_line}", None
 
 
 @main_bp.route('/')
@@ -234,16 +243,17 @@ def run_code():
         
         output = result.stdout
         error = result.stderr
+        error_line = None
         
         if error:
-            error = translate_error(error)
+            error, error_line = translate_error(error)
         
-        return jsonify({'output': output, 'error': error})
+        return jsonify({'output': output, 'error': error, 'error_line': error_line})
     
     except subprocess.TimeoutExpired:
-        return jsonify({'output': '', 'error': 'Code timed out (10 second limit). Check for infinite loops.'})
+        return jsonify({'output': '', 'error': 'Code timed out (10 second limit). Check for infinite loops.', 'error_line': None})
     except Exception as e:
-        return jsonify({'output': '', 'error': f'Execution error: {str(e)}'})
+        return jsonify({'output': '', 'error': f'Execution error: {str(e)}', 'error_line': None})
     finally:
         # Clean up
         try:

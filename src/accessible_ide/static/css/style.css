@@ -373,6 +373,12 @@ body[data-focus-mode="lines"] .CodeMirror-line.CodeMirror-activeline-background 
   line-height: 1.5;
 }
 
+/* Error line highlight in the editor */
+.cm-error-line {
+  background: rgba(255, 107, 107, 0.25) !important;
+  box-shadow: inset 3px 0 0 var(--error-border);
+}
+
 /* ---------- Footer ---------- */
 .footer {
   padding: 8px 16px;

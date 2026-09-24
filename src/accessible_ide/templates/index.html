@@ -47,6 +47,23 @@
       </button>
 
       <div class="tool-group">
+        <button id="btn-save" class="btn btn-toggle" title="Save your code to a file">
+          <span aria-hidden="true">&#128190;</span> Save
+        </button>
+        <button id="btn-open" class="btn btn-toggle" title="Open a Python file">
+          <span aria-hidden="true">&#128194;</span> Open
+        </button>
+      </div>
+
+      <div class="tool-group">
+        <button id="btn-read-line" class="btn btn-toggle" title="Read the current line aloud">
+          <span aria-hidden="true">&#128266;</span> Read line
+        </button>
+      </div>
+
+      <input type="file" id="file-input" accept=".py,.txt" class="visually-hidden">
+
+      <div class="tool-group">
         <label for="font-select" class="visually-hidden">Font</label>
         <select id="font-select" class="tool-select">
           {% for key, font in fonts.items() %}
