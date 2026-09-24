@@ -8,7 +8,7 @@ A fully accessible IDE prioritizing dyslexic & neurodivergent learners, with Pyt
 
 (Sorry guys, but as well as being so vibe-coded, I really wanted a solution. The MD files got pushed and I could close them but ig it's transparency.
 
-- I'm proficient in Python and HTML, CSS and even batch scripting in Windows with several personal security and performane scripts I have made in the past by myself. 
+- I'm proficient in Python and HTML, CSS and even batch scripting in Windows with several personal security and performance scripts I have made in the past by myself. 
 - And I've even modded in Android assembly (smali) disassembling .dex (dalvik executable files manually)...
 - But I just want to push solutions and fill up my account with repo projects to build my career and make a difference to everyone esp. my friends and classmates.
 
