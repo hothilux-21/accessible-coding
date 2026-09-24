@@ -35,3 +35,6 @@ htmlcov/
 .vercel/.env*
 .vercel/output/
 .vercel/README.txt
+
+# Security scan output
+bandit_report.json
