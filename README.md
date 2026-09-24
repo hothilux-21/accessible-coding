@@ -64,14 +64,16 @@ Jump to any section:
 
 1. Download `AccessibleIDE-Setup.exe` from the [latest build](https://github.com/hothilux-21/accessible-coding/releases/latest/download/AccessibleIDE-Setup.exe)
 2. Run it. Choose any install folder.
-3. Tick **Install Python and add it to PATH** (on by default) — this also installs the Microsoft Visual C++ runtime.
-4. Finish, and the IDE opens in your browser. Write Python, then press **Run** (or `Ctrl+Enter`).
+3. Tick **Install Python and add it to PATH** (on by default) — the installer also installs the Microsoft Visual C++ runtime and the WebView2 runtime it needs.
+4. Finish, and the IDE opens in its own **desktop window** (no browser needed). Write Python, then press **Run** (or `Ctrl+Enter`).
 
 ### Windows portable (.exe)
 
 1. Download `AccessibleIDE.exe` from the [latest build](https://github.com/hothilux-21/accessible-coding/releases/latest/download/AccessibleIDE.exe) (always matches the web app)
-2. Double-click to run. Your browser opens with the IDE.
+2. Double-click to run. A **desktop window** opens with the IDE (no browser tab).
 3. Write Python, then press **Run** (or `Ctrl+Enter`).
+
+> Needs the Microsoft Edge **WebView2 runtime** (built into Windows 10/11 or installed by the setup above). Click **Quit** in the sidebar footer to close the app.
 
 > If Windows shows "Windows protected your PC", click **More info** then **Run anyway** — the app is not code-signed yet.
 
