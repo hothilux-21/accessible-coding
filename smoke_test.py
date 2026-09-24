@@ -109,11 +109,16 @@ r19 = c.post('/api/config', json={'font': 'OpenDyslexic'})
 print('POST /api/config (no code) ->', r19.status_code)
 assert r19.status_code == 403, 'config POST not gated by access code'
 
-# Maintenance mode: web with NO access code set -> code runner disabled
+# Maintenance mode: web with NO access code set -> open (sandbox protects)
 routes.ACCESS_CODE = ''
 r20 = c.post('/api/run', json={'code': 'print("hi")'})
-print('POST /api/run (web, no code set) ->', r20.status_code, r20.get_json())
-assert r20.status_code == 403, 'web runner not disabled in maintenance mode'
+print('POST /api/run (no code set) ->', r20.status_code, r20.get_json())
+assert r20.status_code == 200, 'runner should be open when no access code is set'
+
+# Sandbox still blocks dangerous code without an access code
+r21 = c.post('/api/run', json={'code': 'import os'})
+print('POST /api/run (blocked, no code) ->', r21.get_json())
+assert 'not allowed' in r21.get_json()['error'], 'sandbox not active without access code'
 
 routes.ACCESS_CODE = 'test-code-123'
 del os.environ['RENDER']
