@@ -1,6 +1,8 @@
 # AccessibleIDE
 
-A fully accessible IDE prioritizing dyslexic & neurodivergent learners, with Python-first support, dyslexia-friendly fonts, configurable focus/blur modes, text-to-speech, and customizable syntax highlighting.
+A fully accessible IDE for dyslexic and neurodivergent learners.
+
+Python-first. Dyslexia-friendly fonts. Focus mode. Text-to-speech. Plain-English errors. Custom themes.
 
 > **Motivation:** Enable dyslexic classmates and neurodivergent learners to code comfortably; driven by empathy and shared experience.
 
@@ -8,158 +10,199 @@ A fully accessible IDE prioritizing dyslexic & neurodivergent learners, with Pyt
 
 (Sorry guys, but as well as being so vibe-coded, I really wanted a solution. The MD files got pushed and I could close them but ig it's transparency.
 
-- I'm proficient in Python and HTML, CSS and even batch scripting in Windows with several personal security and performance scripts I have made in the past by myself. 
+- I'm proficient in Python and HTML, CSS and even batch scripting in Windows with several personal security and performance scripts I have made in the past by myself.
 - And I've even modded in Android assembly (smali) disassembling .dex (dalvik executable files manually)...
 - But I just want to push solutions and fill up my account with repo projects to build my career and make a difference to everyone esp. my friends and classmates.
 
-## ✨ Key Features
+---
 
-| Category | Features |
-|----------|----------|
-| **Editor** | Monaco/CodeMirror-based Python editor with syntax highlighting |
-| **Execution** | Built-in Python REPL/runner (embedded interpreter) |
-| **Fonts** | OpenDyslexic, Atkinson Hyperlegible, Comic Sans, Courier New + custom `.ttf`/`.woff` upload |
-| **Focus Mode** | Configurable blur zones: lines, blocks, functions, gutter/line numbers |
-| **Themes** | High-contrast, pastel, dark/light presets + full custom theme builder |
-| **TTS** | ReciteMe (API) + open-source: pyttsx3, eSpeak-ng, Coqui TTS |
-| **Errors** | Plain-English messages, step-by-step debugging, visual highlighting |
-| **Storage** | Offline-first (local JSON/TOML), optional Google Drive/OneDrive sync (opt-in) |
-| **Platforms** | Browser web app (primary), Windows `.exe` via PyInstaller |
+## Contents
+
+Jump to any section:
+
+- [Key features](#key-features)
+- [Try it now](#try-it-now)
+- [Getting started](#getting-started)
+- [Project structure](#project-structure)
+- [MVP checklist](#mvp-checklist)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [Full specification](#full-specification)
+- [Contact](#contact)
 
 ---
 
-## 🎯 MVP Checklist (v0.1)
+## Key features
 
-- [ ] Python code editor (Monaco/CodeMirror)
-- [ ] Built-in Python REPL/runner
-- [ ] Local file save/load (JSON config)
-- [ ] 2–3 preset themes (high contrast, dark, pastel)
-- [ ] Dyslexia-friendly font toggle (OpenDyslexic + Atkinson)
-- [ ] Focus mode (blur line numbers OR entire gutter)
-- [ ] Error messages in plain English
-- [ ] Streamlit or Flask web version
-- [ ] Windows `.exe` (PyInstaller)
-- [ ] GitHub public repo ✅
+- **Editor** — CodeMirror Python editor with syntax highlighting
+- **Execution** — built-in Python runner (10-second safety timeout)
+- **Fonts** — OpenDyslexic, Atkinson Hyperlegible, Comic Sans, Courier New
+- **Focus mode** — hide the gutter, or blur every line except the one you are on
+- **Themes** — high contrast, dark, pastel, and light
+- **Text-to-speech** — reads your code and errors aloud
+- **Errors** — plain-English messages, no jargon
+- **Storage** — offline-first, settings saved to your computer
+- **Platforms** — browser web app and Windows `.exe`
 
----
-
-## 🛠 Tech Stack (Decisions Pending)
-
-| Component | Options |
-|-----------|---------|
-| **Browser Framework** | Streamlit vs Flask/FastAPI |
-| **Editor** | Monaco Editor, CodeMirror, or Ace |
-| **Desktop Packaging** | PyInstaller (primary), PyO3/Nuitka (future) |
-| **Config Format** | JSON or TOML |
-| **Deployment** | Vercel, Streamlit Cloud, Railway, Render |
-
-> **Priority:** Reliable uptime > fancy features.
+[↑ Back to contents](#contents)
 
 ---
 
-## ♿ Accessibility Standards
+## Try it now
 
-- **WCAG 2.1 AA** minimum
-- Dyslexia-friendly fonts bundled (not downloaded at runtime)
-- Plain-language UI copy everywhere
-- Full keyboard navigation
-- Screen-reader compatible
+- **Web app:** [https://accessible-coding.onrender.com](https://accessible-coding.onrender.com)
+- **Windows exe:** download `AccessibleIDE.exe` from the [Releases page](https://github.com/hothilux-21/accessible-coding/releases)
+
+[↑ Back to contents](#contents) · [↓ Next: Getting started](#getting-started)
 
 ---
 
-## 📦 Project Structure
+## Getting started
+
+### Windows desktop (.exe)
+
+1. Download `AccessibleIDE.exe` from the [Releases page](https://github.com/hothilux-21/accessible-coding/releases)
+2. Double-click to run. Your browser opens with the IDE.
+3. Write Python, then press **Run** (or `Ctrl+Enter`).
+
+### Browser (web)
+
+Open [https://accessible-coding.onrender.com](https://accessible-coding.onrender.com). No install needed.
+
+### Development
+
+```bash
+git clone https://github.com/hothilux-21/accessible-coding.git
+cd accessible-coding
+pip install -r requirements.txt
+python app.py
+```
+
+Then open http://localhost:5000
+
+### Build the exe yourself
+
+```bash
+pip install pyinstaller
+pyinstaller AccessibleIDE.spec --noconfirm
+```
+
+Your exe is at `dist/AccessibleIDE.exe`.
+
+### Run tests
+
+```bash
+python smoke_test.py
+```
+
+[↑ Back to contents](#contents) · [↓ Next: Project structure](#project-structure)
+
+---
+
+## Project structure
 
 ```
 accessible-coding/
-├── .github/workflows/       # CI/CD (to be added)
+├── .github/workflows/       # CI: tests + exe build on release tags
 ├── docs/                    # Documentation
 ├── src/accessible_ide/
-│   ├── assets/              # Fonts, static assets
-│   ├── components/          # Editor, focus mode, TTS, theme builder UI
-│   ├── config/              # JSON/TOML settings load/save
-│   └── utils/               # Helpers (error translation, TTS wrappers)
+│   ├── assets/              # Fonts (OpenDyslexic, Atkinson Hyperlegible)
+│   ├── static/              # CSS + JavaScript (CodeMirror, app logic)
+│   ├── templates/           # HTML page
+│   ├── config/              # Settings load/save
+│   └── utils/               # Helpers (error translation)
 ├── tests/                   # Test suite
 ├── accessible-ide-requirements.md  # Full specification
 ├── AGENTS.md                # Agent instructions
 └── README.md                # This file
 ```
 
----
-
-## 🚀 Getting Started
-
-### Windows Desktop (.exe)
-1. Download `AccessibleIDE.exe` from the [Releases](https://github.com/hothilux-21/accessible-coding/releases) page
-2. Double-click to run — it opens your browser with the IDE
-3. Write Python, press **Run** (or `Ctrl+Enter`)
-
-### Browser (Web)
-**Live site:** [https://accessible-coding.onrender.com](https://accessible-coding.onrender.com)
-*(Mirror: [accessible-coding.vercel.app](https://accessible-coding.vercel.app))*
-
-### Development
-```bash
-git clone https://github.com/hothilux-21/accessible-coding.git
-cd accessible-coding
-pip install -r requirements.txt
-python app.py
-# Open http://localhost:5000
-```
-
-### Build the exe yourself
-```bash
-pip install pyinstaller
-pyinstaller AccessibleIDE.spec --noconfirm
-# Output: dist/AccessibleIDE.exe
-```
-
-### Run tests
-```bash
-python smoke_test.py
-```
+[↑ Back to contents](#contents) · [↓ Next: MVP checklist](#mvp-checklist)
 
 ---
 
-## 📋 Roadmap
+## MVP checklist
 
-| Phase | Target | Highlights |
-|-------|--------|------------|
-| **v0.1** | ~1 month | Editor + runner + fonts + focus mode + themes + plain errors |
-| **v0.2–0.3** | +1–2 months | Custom theme builder, multiple TTS, cloud sync, debugger UI, configurable blur |
-| **v1.0+** | Future | Linter, Jupyter, collaboration, plugins, Linux |
+What is done in v0.1.0-beta:
 
-See [accessible-ide-requirements.md](accessible-ide-requirements.md) for full specification.
+- [x] Python code editor (CodeMirror)
+- [x] Built-in Python runner
+- [x] Local settings save/load (JSON)
+- [x] 4 preset themes (high contrast, dark, pastel, light)
+- [x] Dyslexia-friendly font toggle (OpenDyslexic + Atkinson Hyperlegible)
+- [x] Focus mode (hide gutter / blur other lines)
+- [x] Error messages in plain English
+- [x] Flask web version
+- [x] Windows `.exe` (PyInstaller)
+- [x] GitHub public repo
+
+Coming next (v0.2):
+
+- [ ] Save and open code files
+- [ ] Custom theme builder
+- [ ] More text-to-speech options
+- [ ] Visual error highlighting in the editor
+- [ ] Configurable blur zones (blocks, functions)
+
+[↑ Back to contents](#contents) · [↓ Next: Roadmap](#roadmap)
 
 ---
 
-## 🤝 Contributing
+## Roadmap
 
-- **License:** Open source (MIT/GPL/Apache 2.0 — TBD)
-- **Core dev:** Solo (owner)
-- **External PRs:** Require permission before merging (review-then-merge)
-- **Issues/Feedback:** Welcome — especially from dyslexic/neurodivergent users
+- **v0.1 (now)** — editor, runner, fonts, focus mode, themes, plain errors
+- **v0.2** — custom themes, more TTS, file save/open, visual error highlighting
+- **v1.0+** — linter, Jupyter, collaboration, plugins, Linux
+
+See the [full specification](#full-specification) for details.
+
+[↑ Back to contents](#contents) · [↓ Next: Contributing](#contributing)
 
 ---
 
-## 📄 Full Specification
+## Contributing
 
-See [`accessible-ide-requirements.md`](accessible-ide-requirements.md) for the complete requirements document including:
-- Platform & distribution details
-- Storage & sync model
-- Core IDE features (execution, editor, languages)
+- **License:** MIT — free to use, modify, and fork
+- **Core development:** solo (owner)
+- **External pull requests:** please ask first. Changes are reviewed before merging.
+- **Feedback:** very welcome, especially from dyslexic and neurodivergent users.
+
+[↑ Back to contents](#contents) · [↓ Next: Full specification](#full-specification)
+
+---
+
+## Full specification
+
+The complete requirements document is at [accessible-ide-requirements.md](accessible-ide-requirements.md).
+
+It covers:
+
+- Platform and distribution
+- Storage and sync model
+- Core IDE features
 - Accessibility features (fonts, TTS, visual, cognitive)
 - Technical stack
-- Open source & collaboration model
-- Timeline & release strategy
-- Validation & testing
+- Open source and collaboration model
+- Timeline and release strategy
+- Validation and testing
 - User personas
-- MVP/Should-Have/Nice-to-Have checklists
+- Feature checklists
 - Success metrics
-- Resources & references
+- Resources and references
 - Next steps
+
+[↑ Back to contents](#contents) · [↓ Next: Contact](#contact)
 
 ---
 
-## 📞 Contact
+## Contact
 
-Built with empathy for dyslexic and neurodivergent learners. Feedback and testing help welcome — especially from the target community.
+Built with empathy for dyslexic and neurodivergent learners.
+
+Feedback and testing help are always welcome — especially from the people this is for.
+
+[↑ Back to contents](#contents)
+
+---
+
+*AccessibleIDE — code comfortably.*

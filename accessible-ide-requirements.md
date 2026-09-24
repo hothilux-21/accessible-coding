@@ -6,6 +6,26 @@
 
 ---
 
+## Contents
+
+Jump to any section:
+
+- [1. Platform & Distribution](#1-platform--distribution)
+- [2. Storage & Sync Model](#2-storage--sync-model)
+- [3. Core IDE Features](#3-core-ide-features)
+- [4. Accessibility Features](#4-accessibility-features)
+- [5. Technical Stack](#5-technical-stack)
+- [6. Open Source & Collaboration Model](#6-open-source--collaboration-model)
+- [7. Timeline & Release Strategy](#7-timeline--release-strategy)
+- [8. Validation & Testing](#8-validation--testing)
+- [9. User Personas](#9-user-personas)
+- [10. MVP Feature Checklist](#10-mvp-feature-checklist)
+- [11. Success Metrics](#11-success-metrics)
+- [12. Resources & References](#12-resources--references)
+- [13. Next Steps](#13-next-steps)
+
+---
+
 ## 1. Platform & Distribution
 
 | Aspect | Requirement |
