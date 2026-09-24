@@ -361,9 +361,16 @@ def run_code():
         temp_file = f.name
     
     try:
-        # Run with timeout
+        # Run with timeout.
+        # In the packaged exe, sys.executable is the exe itself, so we
+        # re-invoke it with --run-script to execute the temp file.
+        if getattr(sys, 'frozen', False):
+            cmd = [sys.executable, '--run-script', temp_file]
+        else:
+            cmd = [sys.executable, temp_file]
+
         result = subprocess.run(
-            [sys.executable, temp_file],
+            cmd,
             capture_output=True,
             text=True,
             timeout=10,
