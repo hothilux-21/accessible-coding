@@ -31,9 +31,19 @@ PrivilegesRequired=lowest
 MinVersion=10.0
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}
+SetupIconFile=src\accessible_ide\assets\icon.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[Messages]
+WelcomeLabel1=Welcome to AccessibleIDE Setup
+WelcomeLabel2=This will install AccessibleIDE on your computer.%n%nAccessibleIDE is a friendly code editor made for dyslexic and neurodivergent learners. It uses dyslexia-friendly fonts, focus mode, text-to-speech, and plain-English error messages.%n%nClick Next to continue, or Cancel to exit.
+FinishedLabel=Setup has finished installing AccessibleIDE on your computer.%n%nClick Finish to open AccessibleIDE.
+SelectDirLabel3=Setup will install AccessibleIDE into the following folder.%n%nTo use a different folder, type a new one or click Browse.
+ReadyLabel1=Setup is now ready to begin installing AccessibleIDE on your computer.
+ReadyLabel2a=Click Install to continue with the current settings, or click Back if you need to review or change anything.
+BeveledLabel=AccessibleIDE - a friendly IDE for everyone
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"

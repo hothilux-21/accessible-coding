@@ -50,5 +50,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,
+    icon='src/accessible_ide/assets/icon.ico',
 )
