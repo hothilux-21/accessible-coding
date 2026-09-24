@@ -87,6 +87,7 @@ print('GET /health ->', r15.status_code, r15.get_json())
 # --- Access code gate (simulate web deployment) ---
 import accessible_ide.routes as routes
 routes.ACCESS_CODE = 'test-code-123'
+os.environ['RENDER'] = '1'  # simulate web deployment
 
 # Without code -> 403
 r16 = c.post('/api/run', json={'code': 'print("hi")'})
@@ -108,6 +109,13 @@ r19 = c.post('/api/config', json={'font': 'OpenDyslexic'})
 print('POST /api/config (no code) ->', r19.status_code)
 assert r19.status_code == 403, 'config POST not gated by access code'
 
+# Maintenance mode: web with NO access code set -> code runner disabled
 routes.ACCESS_CODE = ''
+r20 = c.post('/api/run', json={'code': 'print("hi")'})
+print('POST /api/run (web, no code set) ->', r20.status_code, r20.get_json())
+assert r20.status_code == 403, 'web runner not disabled in maintenance mode'
+
+routes.ACCESS_CODE = 'test-code-123'
+del os.environ['RENDER']
 
 print('\nALL SMOKE TESTS PASSED')

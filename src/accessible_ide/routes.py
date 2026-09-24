@@ -250,9 +250,16 @@ def translate_error(error_output):
 
 
 def access_code_ok(data):
-    """Check the access code for the web version."""
-    if not ACCESS_CODE:
+    """Check the access code for the web version.
+
+    - Desktop app (no RENDER env): always allowed (user's own machine).
+    - Web with ACCESS_CODE set: code required.
+    - Web without ACCESS_CODE: maintenance mode (code runner disabled).
+    """
+    if not os.environ.get('RENDER'):
         return True
+    if not ACCESS_CODE:
+        return False
     return data.get('access_code', '') == ACCESS_CODE
 
 
