@@ -68,7 +68,10 @@ jobs:
           Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.13.15/python-3.13.15-amd64.exe" -OutFile "installer\prereqs\python-3.13.15-amd64.exe" -UseBasicParsing
           Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "installer\prereqs\vc_redist.x64.exe" -UseBasicParsing
       - name: Install Inno Setup
-        run: winget install --id JRSoftware.InnoSetup --accept-source-agreements --accept-package-agreements --silent
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe" -OutFile "$env:TEMP\innosetup.exe" -UseBasicParsing
+          Start-Process -FilePath "$env:TEMP\innosetup.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
       - name: Compile installer
         shell: pwsh
         run: |
