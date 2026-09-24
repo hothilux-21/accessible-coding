@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """
 AccessibleIDE - Main entry point.
-Run with: python app.py
-Build exe with: pyinstaller --onefile --windowed --add-data "src/accessible_ide/static;accessible_ide/static" --add-data "src/accessible_ide/templates;accessible_ide/templates" --add-data "src/accessible_ide/assets;accessible_ide/assets" app.py
+
+Desktop app: runs a local Flask server in a background thread and shows
+the IDE in a native window (PyWebView / WebView2) - no browser needed.
+
+Web deployment (Render) uses `wsgi:app` via gunicorn and never reaches
+the `__main__` block below.
 """
 import os
 import sys
 import runpy
 import socket
 import threading
-import webbrowser
+import time
+import urllib.request
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
@@ -17,14 +22,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 from accessible_ide import create_app
 
 app = create_app()
-
-
-def _open_browser(url):
-    """Open the IDE in the default browser (best effort, never crashes)."""
-    try:
-        webbrowser.open(url)
-    except Exception:
-        pass
 
 
 def _port_in_use(port):
@@ -37,6 +34,61 @@ def _port_in_use(port):
             return True
 
 
+def _wait_for_server(url, timeout=15):
+    """Block until the local server responds, or return False on timeout."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            urllib.request.urlopen(url + '/health', timeout=1)
+            return True
+        except Exception:
+            time.sleep(0.2)
+    return False
+
+
+def _start_server(port):
+    """Run the Flask server (debug off, localhost only)."""
+    debug = os.environ.get('FLASK_DEBUG', '0') == '1'
+    app.run(host='127.0.0.1', port=port, debug=debug, use_reloader=False)
+
+
+def _run_desktop(port):
+    """Launch the native desktop window (PyWebView)."""
+    import webview  # imported lazily so the web deployment needs no pywebview
+
+    url = f'http://127.0.0.1:{port}'
+
+    # If the IDE is already running, just show a window for it and exit.
+    if _port_in_use(port):
+        webview.create_window(
+            'AccessibleIDE',
+            url,
+            width=1200,
+            height=800,
+            min_size=(800, 600),
+        )
+        webview.start()
+        return
+
+    # Start the server, wait until it is ready, then open the window.
+    threading.Thread(target=_start_server, args=(port,), daemon=True).start()
+    if not _wait_for_server(url):
+        print('AccessibleIDE could not start its local server.')
+        sys.exit(1)
+
+    webview.create_window(
+        'AccessibleIDE',
+        url,
+        width=1200,
+        height=800,
+        min_size=(800, 600),
+    )
+    webview.start()
+
+    # Window closed -> stop the server and exit.
+    os._exit(0)
+
+
 if __name__ == '__main__':
     # Hidden mode used by the code runner inside the packaged exe.
     # The exe cannot call a separate python.exe, so it re-invokes itself
@@ -45,17 +97,5 @@ if __name__ == '__main__':
         runpy.run_path(sys.argv[2], run_name='__main__')
         sys.exit(0)
 
-    # Local / desktop app server.
-    # Debug is OFF by default and the server binds to localhost only.
     port = int(os.environ.get('PORT', 5000))
-    url = f'http://127.0.0.1:{port}'
-
-    # If the IDE is already running, just bring up the browser and exit.
-    if _port_in_use(port):
-        _open_browser(url)
-        sys.exit(0)
-
-    # Start the server, then open the browser once it is ready.
-    threading.Timer(1.0, lambda: _open_browser(url)).start()
-    debug = os.environ.get('FLASK_DEBUG', '0') == '1'
-    app.run(host='127.0.0.1', port=port, debug=debug)
+    _run_desktop(port)
