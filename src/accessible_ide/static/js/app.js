@@ -122,6 +122,9 @@
     // CodeMirror needs the font applied to its content
     var cm = editorEl.querySelector('.CodeMirror');
     if (cm) cm.style.fontFamily = family;
+    // Font metrics changed - recalculate the gutter width so line
+    // numbers never overlap the code.
+    editor.refresh();
   }
 
   function applyFontSize(size) {
@@ -369,4 +372,12 @@
   applyFont(body.getAttribute('data-font') || 'Atkinson Hyperlegible');
   applyFontSize(parseInt(body.getAttribute('data-font-size') || '16', 10));
   applyFocusMode(body.getAttribute('data-focus-mode') || 'off');
+
+  // Custom fonts load asynchronously. Once they are ready, recalculate
+  // the editor layout so the gutter width matches the real font metrics.
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () {
+      editor.refresh();
+    });
+  }
 })();

@@ -1,6 +1,7 @@
 /* ============================================================
    AccessibleIDE - Styles
    WCAG 2.1 AA: high contrast, large targets, clear focus states
+   Calm, low-distraction design for dyslexic & neurodivergent users
    ============================================================ */
 
 :root {
@@ -19,6 +20,13 @@
   --font-size: 16px;
   --line-height: 1.6;
   --letter-spacing: 0.5px;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
 }
 
 /* ---------- Theme: High Contrast (default) ---------- */
@@ -122,8 +130,8 @@ body {
   z-index: 1000;
   background: var(--accent);
   color: var(--accent-fg);
-  padding: 8px 16px;
-  border-radius: 4px;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
   font-weight: bold;
   text-decoration: none;
 }
@@ -142,61 +150,83 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   background: var(--panel-bg);
-  border-bottom: 2px solid var(--panel-border);
+  border-bottom: 1px solid var(--panel-border);
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .brand-logo {
-  font-size: 1.6em;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-radius: var(--radius-sm);
+  font-size: 1.2em;
+  flex-shrink: 0;
 }
 
 .brand-name {
   margin: 0;
-  font-size: 1.2em;
+  font-size: 1.15em;
   font-weight: bold;
+  letter-spacing: normal;
 }
 
 .version-badge {
-  font-size: 0.75em;
+  font-size: 0.72em;
   background: var(--accent);
   color: var(--accent-fg);
-  padding: 2px 8px;
-  border-radius: 10px;
+  padding: 2px 10px;
+  border-radius: 999px;
   font-weight: bold;
+  letter-spacing: normal;
 }
 
 .toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   margin-left: auto;
 }
 
 .tool-group {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--panel-border);
+}
+
+.tool-group:first-of-type {
+  border-left: none;
+  padding-left: 0;
 }
 
 .tool-select {
   font-family: inherit;
   font-size: 0.95em;
-  padding: 6px 10px;
+  padding: var(--space-2) var(--space-3);
   border: 2px solid var(--panel-border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg);
   color: var(--fg);
   cursor: pointer;
-  min-height: 38px;
+  min-height: 40px;
+  transition: border-color 0.2s ease;
+}
+
+.tool-select:hover {
+  border-color: var(--accent);
 }
 
 .tool-label {
@@ -204,6 +234,7 @@ body {
   color: var(--muted);
   min-width: 40px;
   text-align: center;
+  letter-spacing: normal;
 }
 
 input[type="range"] {
@@ -215,14 +246,14 @@ input[type="range"] {
 /* ---------- Buttons ---------- */
 .btn {
   font-family: inherit;
-  font-size: 1em;
-  font-weight: bold;
-  padding: 8px 16px;
+  font-size: 0.95em;
+  font-weight: 600;
+  padding: var(--space-2) var(--space-4);
   border: 2px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  min-height: 38px;
-  transition: transform 0.1s ease, background 0.2s ease;
+  min-height: 40px;
+  transition: transform 0.1s ease, background 0.2s ease, border-color 0.2s ease;
 }
 
 .btn:active { transform: scale(0.97); }
@@ -230,6 +261,7 @@ input[type="range"] {
 .btn-primary {
   background: var(--accent);
   color: var(--accent-fg);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
 }
 
 .btn-primary:hover {
@@ -242,6 +274,10 @@ input[type="range"] {
   border-color: var(--panel-border);
 }
 
+.btn-toggle:hover {
+  border-color: var(--accent);
+}
+
 .btn-toggle.active {
   background: var(--accent);
   color: var(--accent-fg);
@@ -250,8 +286,8 @@ input[type="range"] {
 
 .btn-small {
   font-size: 0.85em;
-  padding: 4px 10px;
-  min-height: 30px;
+  padding: var(--space-1) var(--space-3);
+  min-height: 32px;
   background: var(--bg);
   color: var(--fg);
   border-color: var(--panel-border);
@@ -273,6 +309,7 @@ input[type="range"] {
   flex: 1;
   min-height: 0;
   position: relative;
+  background: var(--bg);
 }
 
 .editor {
@@ -293,11 +330,20 @@ input[type="range"] {
 }
 
 .CodeMirror-lines {
-  padding: 12px 0;
+  padding: var(--space-3) 0;
 }
 
+/* Gutter: keep line numbers aligned with the code.
+   Letter-spacing must NOT apply here, or the numbers drift
+   and overlap the code. */
 .CodeMirror-gutters {
   border-right: 1px solid var(--panel-border);
+  letter-spacing: normal !important;
+}
+
+.CodeMirror-linenumber {
+  padding: 0 var(--space-2) 0 var(--space-3);
+  color: var(--muted);
 }
 
 /* Focus mode: hide gutter */
@@ -317,60 +363,65 @@ body[data-focus-mode="lines"] .CodeMirror-line.CodeMirror-activeline-background 
 
 /* ---------- Output pane ---------- */
 .output-pane {
-  border-top: 2px solid var(--panel-border);
+  border-top: 1px solid var(--panel-border);
   background: var(--panel-bg);
   max-height: 35%;
   display: flex;
   flex-direction: column;
-  min-height: 120px;
+  min-height: 140px;
 }
 
 .output-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 16px;
+  padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--panel-border);
 }
 
 .output-title {
   margin: 0;
-  font-size: 0.95em;
+  font-size: 0.9em;
   font-weight: bold;
+  color: var(--muted);
+  letter-spacing: normal;
 }
 
 .output {
   flex: 1;
   margin: 0;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   overflow: auto;
   font-family: "Courier New", monospace;
   font-size: 0.95em;
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--fg);
+  letter-spacing: normal;
 }
 
 /* ---------- Error panel ---------- */
 .error-panel {
-  margin: 0 16px 12px;
-  padding: 12px 16px;
+  margin: 0 var(--space-4) var(--space-3);
+  padding: var(--space-3) var(--space-4);
   background: var(--error-bg);
   border: 2px solid var(--error-border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   color: var(--error-fg);
 }
 
 .error-title {
-  margin: 0 0 6px;
+  margin: 0 0 var(--space-1);
   font-size: 1em;
   font-weight: bold;
+  letter-spacing: normal;
 }
 
 .error-message {
   margin: 0;
   font-size: 1em;
   line-height: 1.5;
+  letter-spacing: normal;
 }
 
 /* Error line highlight in the editor */
@@ -381,12 +432,13 @@ body[data-focus-mode="lines"] .CodeMirror-line.CodeMirror-activeline-background 
 
 /* ---------- Footer ---------- */
 .footer {
-  padding: 8px 16px;
+  padding: var(--space-2) var(--space-4);
   background: var(--panel-bg);
   border-top: 1px solid var(--panel-border);
   font-size: 0.85em;
   color: var(--muted);
   text-align: center;
+  letter-spacing: normal;
 }
 
 .footer a {
@@ -402,6 +454,10 @@ body[data-focus-mode="lines"] .CodeMirror-line.CodeMirror-activeline-background 
   .toolbar {
     margin-left: 0;
     justify-content: center;
+  }
+  .tool-group {
+    border-left: none;
+    padding-left: 0;
   }
   .brand {
     justify-content: center;
