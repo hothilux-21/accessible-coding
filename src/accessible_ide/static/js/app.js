@@ -23,6 +23,7 @@
   var fontSizeLabel = document.getElementById('font-size-label');
   var themeSelect = document.getElementById('theme-select');
   var focusMode = document.getElementById('focus-mode');
+  var btnQuit = document.getElementById('btn-quit');
 
   var body = document.body;
   var ttsEnabled = btnTts.getAttribute('aria-pressed') === 'true';
@@ -366,6 +367,22 @@
     'Ctrl-Enter': runCode,
     'Cmd-Enter': runCode
   });
+
+  // ---------- Quit (desktop app only) ----------
+  // The Quit button only appears when running on the local desktop app,
+  // where it stops the background server cleanly.
+  if (btnQuit && (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost')) {
+    btnQuit.hidden = false;
+    btnQuit.addEventListener('click', function () {
+      fetch('/api/shutdown', { method: 'POST' })
+        .then(function () {
+          window.close();
+        })
+        .catch(function () {
+          window.close();
+        });
+    });
+  }
 
   // ---------- Init ----------
   applyTheme(body.getAttribute('data-theme') || 'high-contrast');

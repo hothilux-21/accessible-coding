@@ -445,6 +445,10 @@ body[data-focus-mode="lines"] .CodeMirror-line.CodeMirror-activeline-background 
   color: var(--accent);
 }
 
+.quit-btn {
+  margin-top: var(--space-2);
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 768px) {
   .topbar {

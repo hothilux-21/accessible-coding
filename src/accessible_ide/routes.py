@@ -10,6 +10,7 @@ import re
 import time
 import tempfile
 import signal
+import threading
 from pathlib import Path
 
 main_bp = Blueprint('main', __name__)
@@ -468,3 +469,17 @@ def serve_font(filename):
 @main_bp.route('/health')
 def health():
     return jsonify({'status': 'ok'})
+
+
+@main_bp.route('/api/shutdown', methods=['POST'])
+def shutdown():
+    """Stop the desktop app server. Local-only: never exposed on the web."""
+    if os.environ.get('RENDER'):
+        return jsonify({'success': False, 'error': 'Not available on the web.'}), 403
+
+    def _stop():
+        time.sleep(0.3)  # let the response flush first
+        os._exit(0)
+
+    threading.Thread(target=_stop, daemon=True).start()
+    return jsonify({'success': True})
