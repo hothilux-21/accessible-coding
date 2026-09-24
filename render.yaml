@@ -1,0 +1,17 @@
+# Render blueprint for AccessibleIDE
+# Auto-configures the web service when the repo is connected to Render.
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: accessible-coding
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn wsgi:app
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: SECRET_KEY
+        generateValue: true
