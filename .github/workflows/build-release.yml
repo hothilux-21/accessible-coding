@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install dependencies
-        run: pip install flask
+        run: pip install flask pywebview
       - name: Run smoke tests
         run: python smoke_test.py
 
@@ -33,7 +33,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install dependencies
-        run: pip install flask pyinstaller
+        run: pip install flask pywebview pyinstaller
       - name: Build exe
         run: pyinstaller AccessibleIDE.spec --noconfirm
       - name: Upload exe artifact
@@ -52,7 +52,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install dependencies
-        run: pip install flask pyinstaller
+        run: pip install flask pywebview pyinstaller
       - name: Build onedir app
         run: pyinstaller AccessibleIDE-onedir.spec --noconfirm
       - name: Download installer prerequisites

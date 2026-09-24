@@ -1,3 +1,4 @@
 flask>=3.0.0
 gunicorn>=21.0.0
 pyinstaller>=6.0.0
+pywebview>=6.0.0  # desktop native-window engine (module: webview) — also installed by CI for the .exe build
