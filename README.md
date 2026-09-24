@@ -61,7 +61,7 @@ Jump to any section:
 
 ### Windows desktop (.exe)
 
-1. Download `AccessibleIDE.exe` from the [Releases page](https://github.com/hothilux-21/accessible-coding/releases)
+1. Download `AccessibleIDE.exe` from the [latest build](https://github.com/hothilux-21/accessible-coding/releases/latest/download/AccessibleIDE.exe) (always matches the web app)
 2. Double-click to run. Your browser opens with the IDE.
 3. Write Python, then press **Run** (or `Ctrl+Enter`).
 

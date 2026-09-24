@@ -1,0 +1,68 @@
+name: Build Exe (latest)
+
+# Builds the Windows exe on every push to main and publishes it to a
+# stable "latest" release, so the desktop app always matches the web app.
+# Download: https://github.com/hothilux-21/accessible-coding/releases/latest/download/AccessibleIDE.exe
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install flask
+      - name: Run smoke tests
+        run: python smoke_test.py
+
+  build-windows:
+    name: Build Windows exe
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install flask pyinstaller
+      - name: Build exe
+        run: pyinstaller AccessibleIDE.spec --noconfirm
+      - name: Upload exe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AccessibleIDE-windows
+          path: dist/AccessibleIDE.exe
+
+  publish-latest:
+    name: Publish to latest release
+    needs: build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download exe
+        uses: actions/download-artifact@v4
+        with:
+          name: AccessibleIDE-windows
+          path: release/
+      - name: Update latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create latest \
+            --title "Latest build" \
+            --notes "Auto-built from the main branch. Matches the live web app." \
+            --repo "${{ github.repository }}" 2>/dev/null || true
+          gh release upload latest release/AccessibleIDE.exe \
+            --clobber --repo "${{ github.repository }}"
