@@ -139,7 +139,16 @@
 
   function applyFocusMode(mode) {
     body.setAttribute('data-focus-mode', mode);
+    // Hide the gutter through CodeMirror's native option rather than CSS
+    // display:none. Toggling lineNumbers makes CodeMirror re-measure and
+    // drop the gutter column, so the numbers never ghost over the code.
+    if (mode === 'gutter') {
+      if (editor.getOption('lineNumbers')) editor.setOption('lineNumbers', false);
+    } else {
+      if (!editor.getOption('lineNumbers')) editor.setOption('lineNumbers', true);
+    }
     editor.refresh();
+    setTimeout(editor.refresh.bind(editor), 40);
   }
 
   // ---------- Config persistence ----------
