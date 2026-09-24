@@ -6,11 +6,52 @@ import subprocess
 import sys
 import json
 import os
+import re
+import time
 import tempfile
 import signal
 from pathlib import Path
 
 main_bp = Blueprint('main', __name__)
+
+# Access code for the web version. If set, /api/run and /api/config POST
+# require it. If NOT set, the code runner is disabled (maintenance mode).
+ACCESS_CODE = os.environ.get('ACCESS_CODE', '')
+
+# Sandbox the code runner on the web. The desktop exe runs full Python.
+SANDBOX = os.environ.get('SANDBOX', '0') == '1' or bool(os.environ.get('RENDER'))
+
+# Simple in-memory rate limiting (per IP)
+RATE_LIMIT = {}
+RATE_MAX = 10          # requests per window
+RATE_WINDOW = 60       # seconds
+
+# Modules that are blocked in the sandboxed web runner
+BLOCKED_IMPORTS = [
+    'os', 'sys', 'subprocess', 'socket', 'requests', 'urllib', 'http',
+    'ftplib', 'smtplib', 'telnetlib', 'poplib', 'imaplib', 'importlib',
+    'ctypes', 'multiprocessing', 'threading', 'shutil', 'pathlib', 'glob',
+    'tempfile', 'pickle', 'marshal', 'shelve', 'sqlite3', 'webbrowser',
+    'platform', 'getpass', 'pwd', 'grp', 'resource', 'signal', 'asyncio',
+    'concurrent', 'ssl', 'ftplib', 'nntplib', 'cgi', 'cgitb', 'wsgiref',
+]
+
+# Builtins that are blocked in the sandboxed web runner
+BLOCKED_BUILTINS = [
+    'open', 'eval', 'exec', 'compile', '__import__', 'input', 'breakpoint',
+    'globals', 'locals', 'vars', 'getattr', 'setattr', 'delattr',
+    'memoryview', 'help', 'exit', 'quit', 'copyright', 'credits', 'license',
+]
+
+# Patterns that are blocked in the sandboxed web runner
+BLOCKED_PATTERNS = [
+    r'__\w+__',          # dunder access (e.g. __import__, __builtins__)
+    r'\bopen\s*\(', r'\beval\s*\(', r'\bexec\s*\(', r'\bcompile\s*\(',
+    r'\binput\s*\(', r'\bbreakpoint\s*\(', r'\bglobals\s*\(', r'\blocals\s*\(',
+    r'\bvars\s*\(', r'\bgetattr\s*\(', r'\bsetattr\s*\(', r'\bdelattr\s*\(',
+]
+
+IMPORT_RE = re.compile(r'^\s*(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)', re.MULTILINE)
 
 # Config file path
 CONFIG_DIR = Path.home() / '.accessible-ide'
@@ -196,7 +237,6 @@ def translate_error(error_output):
                 for part in parts:
                     if 'line' in part:
                         # Extract the number (e.g. "line 12")
-                        import re
                         match = re.search(r'line\s+(\d+)', part)
                         if match:
                             line_number = int(match.group(1))
@@ -207,6 +247,66 @@ def translate_error(error_output):
     
     # Fallback: return last line simplified
     return f"Error: {last_line}", None
+
+
+def access_code_ok(data):
+    """Check the access code for the web version."""
+    if not ACCESS_CODE:
+        return True
+    return data.get('access_code', '') == ACCESS_CODE
+
+
+def rate_limited(ip):
+    """Return True if the IP has exceeded the request limit."""
+    now = time.time()
+    # Clean up old entries occasionally
+    if len(RATE_LIMIT) > 1000:
+        for key in list(RATE_LIMIT.keys()):
+            RATE_LIMIT[key] = [t for t in RATE_LIMIT[key] if now - t < RATE_WINDOW]
+            if not RATE_LIMIT[key]:
+                del RATE_LIMIT[key]
+    recent = [t for t in RATE_LIMIT.get(ip, []) if now - t < RATE_WINDOW]
+    if len(recent) >= RATE_MAX:
+        return True
+    recent.append(now)
+    RATE_LIMIT[ip] = recent
+    return False
+
+
+def client_ip():
+    """Best-effort client IP (handles Render's proxy)."""
+    forwarded = request.headers.get('X-Forwarded-For', '')
+    if forwarded:
+        return forwarded.split(',')[0].strip()
+    return request.remote_addr or 'unknown'
+
+
+def check_sandbox(code):
+    """Return (ok, message) for the sandboxed web runner."""
+    if not SANDBOX:
+        return True, None
+
+    # Block dangerous imports
+    for match in IMPORT_RE.finditer(code):
+        module = match.group(1)
+        top = module.split('.')[0]
+        if top in BLOCKED_IMPORTS:
+            return False, (
+                'This code uses a feature that is not allowed in the web '
+                'version (importing "{0}"). Try simpler code, or use the '
+                'desktop app for full Python.'.format(module)
+            )
+
+    # Block dangerous builtins and patterns
+    for pattern in BLOCKED_PATTERNS:
+        if re.search(pattern, code):
+            return False, (
+                'This code uses a feature that is not allowed in the web '
+                'version. Try simpler code, or use the desktop app for full '
+                'Python.'
+            )
+
+    return True, None
 
 
 @main_bp.route('/')
@@ -220,12 +320,34 @@ def index():
 
 @main_bp.route('/api/run', methods=['POST'])
 def run_code():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     code = data.get('code', '')
-    
+
+    # Access code gate (web version)
+    if not access_code_ok(data):
+        return jsonify({
+            'output': '',
+            'error': 'This site is protected. Enter the access code to run code.',
+            'error_line': None,
+            'code_required': True
+        }), 403
+
+    # Rate limit
+    if rate_limited(client_ip()):
+        return jsonify({
+            'output': '',
+            'error': 'Too many requests. Please wait a moment and try again.',
+            'error_line': None
+        }), 429
+
     if not code.strip():
-        return jsonify({'output': '', 'error': 'No code to run.'})
-    
+        return jsonify({'output': '', 'error': 'No code to run.', 'error_line': None})
+
+    # Sandbox check (web version)
+    ok, sandbox_message = check_sandbox(code)
+    if not ok:
+        return jsonify({'output': '', 'error': sandbox_message, 'error_line': None})
+
     # Write code to temp file
     with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
         f.write(code)
@@ -262,12 +384,55 @@ def run_code():
             pass
 
 
+# Allowed config keys and their expected types
+CONFIG_TYPES = {
+    'font': str,
+    'font_size': int,
+    'line_height': (int, float),
+    'letter_spacing': (int, float),
+    'theme': str,
+    'focus_mode': str,
+    'blur_intensity': (int, float),
+    'tts_enabled': bool,
+    'tts_engine': str,
+}
+
+CONFIG_VALUES = {
+    'font': set(FONTS.keys()),
+    'theme': set(THEMES.keys()),
+    'focus_mode': {'off', 'gutter', 'lines'},
+}
+
+
 @main_bp.route('/api/config', methods=['GET', 'POST'])
 def config_api():
     if request.method == 'GET':
         return jsonify(load_config())
-    
-    data = request.get_json()
+
+    data = request.get_json(silent=True) or {}
+
+    # Access code gate (web version)
+    if not access_code_ok(data):
+        return jsonify({'success': False, 'error': 'Access code required.', 'code_required': True}), 403
+
+    # Validate keys and types
+    invalid = []
+    for key, value in data.items():
+        if key not in CONFIG_TYPES:
+            invalid.append(key)
+            continue
+        if not isinstance(value, CONFIG_TYPES[key]):
+            invalid.append(key)
+            continue
+        if key in CONFIG_VALUES and value not in CONFIG_VALUES[key]:
+            invalid.append(key)
+
+    if invalid:
+        return jsonify({
+            'success': False,
+            'error': 'Invalid settings: ' + ', '.join(invalid) + '.'
+        }), 400
+
     config = load_config()
     config.update(data)
     save_config(config)

@@ -1,0 +1,135 @@
+{
+  "errors": [],
+  "generated_at": "2026-09-24T10:40:46Z",
+  "metrics": {
+    "_totals": {
+      "CONFIDENCE.HIGH": 4,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 4,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 261,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
+    "src\\accessible_ide\\__init__.py": {
+      "CONFIDENCE.HIGH": 0,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 0,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 17,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
+    "src\\accessible_ide\\routes.py": {
+      "CONFIDENCE.HIGH": 4,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 4,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 244,
+      "nosec": 0,
+      "skipped_tests": 0
+    }
+  },
+  "results": [
+    {
+      "code": "4 from flask import Blueprint, render_template, request, jsonify, send_from_directory\n5 import subprocess\n6 import sys\n",
+      "col_offset": 0,
+      "end_col_offset": 17,
+      "filename": "src\\accessible_ide\\routes.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 78,
+        "link": "https://cwe.mitre.org/data/definitions/78.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "Consider possible security implications associated with the subprocess module.",
+      "line_number": 5,
+      "line_range": [
+        5
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_imports.html#b404-import-subprocess",
+      "test_id": "B404",
+      "test_name": "blacklist"
+    },
+    {
+      "code": "136             return config\n137         except Exception:\n138             pass\n139     return DEFAULT_CONFIG.copy()\n",
+      "col_offset": 8,
+      "end_col_offset": 16,
+      "filename": "src\\accessible_ide\\routes.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 703,
+        "link": "https://cwe.mitre.org/data/definitions/703.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "Try, Except, Pass detected.",
+      "line_number": 137,
+      "line_range": [
+        137,
+        138
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html",
+      "test_id": "B110",
+      "test_name": "try_except_pass"
+    },
+    {
+      "code": "235         # Run with timeout\n236         result = subprocess.run(\n237             [sys.executable, temp_file],\n238             capture_output=True,\n239             text=True,\n240             timeout=10,\n241             cwd=tempfile.gettempdir()\n242         )\n243         \n",
+      "col_offset": 17,
+      "end_col_offset": 9,
+      "filename": "src\\accessible_ide\\routes.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 78,
+        "link": "https://cwe.mitre.org/data/definitions/78.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "subprocess call - check for execution of untrusted input.",
+      "line_number": 236,
+      "line_range": [
+        236,
+        237,
+        238,
+        239,
+        240,
+        241,
+        242
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b603_subprocess_without_shell_equals_true.html",
+      "test_id": "B603",
+      "test_name": "subprocess_without_shell_equals_true"
+    },
+    {
+      "code": "260             os.unlink(temp_file)\n261         except Exception:\n262             pass\n263 \n",
+      "col_offset": 8,
+      "end_col_offset": 16,
+      "filename": "src\\accessible_ide\\routes.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 703,
+        "link": "https://cwe.mitre.org/data/definitions/703.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "Try, Except, Pass detected.",
+      "line_number": 261,
+      "line_range": [
+        261,
+        262
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html",
+      "test_id": "B110",
+      "test_name": "try_except_pass"
+    }
+  ]
+}

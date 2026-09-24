@@ -26,6 +26,17 @@
 
   var body = document.body;
   var ttsEnabled = btnTts.getAttribute('aria-pressed') === 'true';
+  var accessCode = localStorage.getItem('accessible_ide_code') || '';
+
+  function promptForAccessCode() {
+    var code = window.prompt('This site is protected. Enter the access code:');
+    if (code) {
+      accessCode = code;
+      localStorage.setItem('accessible_ide_code', code);
+      return true;
+    }
+    return false;
+  }
 
   // ---------- CodeMirror setup ----------
   var editor = CodeMirror(editorEl, {
@@ -129,6 +140,7 @@
 
   // ---------- Config persistence ----------
   function saveConfig(partial) {
+    partial.access_code = accessCode;
     fetch('/api/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -170,10 +182,20 @@
     fetch('/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: code })
+      body: JSON.stringify({ code: code, access_code: accessCode })
     })
       .then(function (res) { return res.json(); })
       .then(function (data) {
+        if (data.code_required) {
+          if (promptForAccessCode()) {
+            runCode();
+          } else {
+            outputEl.textContent = 'Code running is locked.';
+            errorMessage.textContent = data.error;
+            errorPanel.hidden = false;
+          }
+          return;
+        }
         outputEl.textContent = data.output || '(no output)';
         if (data.error) {
           errorMessage.textContent = data.error;
