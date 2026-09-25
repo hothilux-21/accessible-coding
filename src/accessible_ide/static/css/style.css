@@ -391,10 +391,13 @@ input[type="range"] {
    Hiding the gutter with CSS leaves CodeMirror's internal width
    math stale, which makes the line numbers ghost over the code. */
 
-/* Focus mode: blur non-active lines */
+/* Focus mode: blur non-active lines.
+   --blur-amount is written by app.js from the "How much to fade" slider.
+   It is clamped in CSS too, so a hand-edited config can never make the
+   other lines completely invisible. */
 body[data-focus-mode="lines"] .CodeMirror-line:not(.CodeMirror-activeline-background) {
-  opacity: 0.45;
-  transition: opacity 0.2s ease;
+  opacity: clamp(0.15, var(--blur-amount, 0.5), 0.85);
+  transition: opacity var(--motion-med) var(--ease);
 }
 
 body[data-focus-mode="lines"] .CodeMirror-line.CodeMirror-activeline-background {
@@ -505,6 +508,289 @@ body[data-focus-mode="lines"] .CodeMirror-line.CodeMirror-activeline-background 
 ::selection {
   background: var(--accent);
   color: var(--accent-fg);
+}
+
+/* ---------- Extra-high contrast ----------
+   An opt-in boost for readers whose words still blend together. It only
+   widens the gap between the text and its background; it never shifts
+   the hue, so the theme stays recognisable. The code colours are handled
+   in app.js so the editor and the chrome always agree. */
+body[data-contrast="high"][data-theme="dark"],
+body[data-contrast="high"][data-theme="high-contrast"] {
+  --fg: #ffffff;
+  --muted: #d4d4d4;
+  --panel-border: #6a6a6a;
+  --error-border: #ff9c9c;
+  --error-fg: #ffdada;
+}
+
+body[data-contrast="high"][data-theme="light"],
+body[data-contrast="high"][data-theme="pastel"] {
+  --fg: #000000;
+  --muted: #333333;
+  --panel-border: #8a8a8a;
+  --error-border: #8f0000;
+  --error-fg: #5c0000;
+}
+
+/* ---------- Settings dialog ----------
+   A native <dialog> so focus trapping, Escape and the inert background
+   come from the browser rather than hand-rolled JavaScript. */
+.settings {
+  width: min(560px, calc(100vw - 2 * var(--space-4)));
+  max-height: calc(100vh - 2 * var(--space-4));
+  padding: 0;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+}
+
+.settings::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 2 * var(--space-4));
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+}
+
+.settings-title {
+  margin: 0;
+  font-size: 1.25em;
+  font-weight: bold;
+  letter-spacing: normal;
+}
+
+/* The body scrolls, so the header and the status line stay put. */
+.settings-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+.settings-group {
+  margin: 0 0 var(--space-5);
+  padding: 0 0 var(--space-5);
+  border: 0;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.settings-group:last-of-type {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.settings-legend {
+  padding: 0;
+  margin-bottom: var(--space-1);
+  font-size: 1.05em;
+  font-weight: bold;
+  color: var(--accent);
+  letter-spacing: normal;
+}
+
+.settings-hint,
+.field-help {
+  margin: 0 0 var(--space-2);
+  font-size: 0.9em;
+  line-height: 1.5;
+  color: var(--muted);
+  letter-spacing: normal;
+}
+
+.field {
+  margin-bottom: var(--space-4);
+}
+
+.field:last-child {
+  margin-bottom: 0;
+}
+
+.field > label,
+.field-label-static {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-weight: 600;
+  letter-spacing: normal;
+}
+
+.field select,
+.field input[type="range"] {
+  width: 100%;
+}
+
+.field select {
+  font-family: inherit;
+  font-size: 1em;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg);
+  color: var(--fg);
+  border: 2px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+}
+
+.field select:hover {
+  border-color: var(--accent);
+}
+
+.field select:focus-visible,
+.field input[type="range"]:focus-visible {
+  border-color: var(--accent);
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Slider and its live value sit on one line so the number never moves. */
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.field-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.field-value {
+  flex: 0 0 auto;
+  min-width: 4.5ch;
+  padding: var(--space-1) var(--space-2);
+  text-align: center;
+  font-family: "Courier New", monospace;
+  font-size: 0.95em;
+  color: var(--muted);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+}
+
+/* A disabled field stays visible and legible; it is dimmed with opacity
+   rather than the low-contrast placeholder grey, which would fail AA. */
+.field.is-disabled .field-row,
+.field.is-disabled .field-help {
+  opacity: 0.6;
+}
+
+.field.is-disabled input[type="range"] {
+  cursor: not-allowed;
+}
+
+.field-inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.field-inline > label {
+  margin-bottom: 0;
+}
+
+/* Switch: a real <button role="switch">, so it is reachable by keyboard
+   and announced correctly. The track is decorative; the state lives in
+   the accessible name and aria-checked. */
+#tts-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: var(--space-1) var(--space-3);
+  background: var(--bg);
+  color: var(--fg);
+  border: 2px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  transition: background var(--motion-med) var(--ease),
+              border-color var(--motion-med) var(--ease);
+}
+
+#tts-toggle:hover {
+  border-color: var(--accent);
+}
+
+.switch-track {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 26px;
+  flex-shrink: 0;
+  background: var(--panel-border);
+  border-radius: 999px;
+  transition: background var(--motion-med) var(--ease);
+}
+
+.switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  background: var(--fg);
+  border-radius: 50%;
+  transition: transform var(--motion-med) var(--ease);
+}
+
+#tts-toggle.active {
+  background: var(--bg);
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+#tts-toggle.active .switch-track {
+  background: var(--accent);
+}
+
+#tts-toggle.active .switch-thumb {
+  transform: translateX(22px);
+  background: var(--accent-fg);
+}
+
+.switch-text {
+  min-width: 2.5ch;
+  font-weight: 600;
+}
+
+.settings-status {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  min-height: 1.5em;
+  font-size: 0.9em;
+  color: var(--muted);
+  background: var(--panel-bg);
+  border-top: 1px solid var(--panel-border);
+}
+
+.settings-status.is-error {
+  color: var(--error-fg);
+  background: var(--error-bg);
+  border-top-color: var(--error-border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch-track,
+  .switch-thumb {
+    transition: none;
+  }
 }
 
 /* ---------- Responsive ---------- */

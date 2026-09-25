@@ -30,7 +30,7 @@
     }
   </style>
 </head>
-<body data-theme="{{ config.theme }}" data-font="{{ config.font }}" data-font-size="{{ config.font_size }}" data-line-height="{{ config.line_height }}" data-letter-spacing="{{ config.letter_spacing }}" data-focus-mode="{{ config.focus_mode }}" data-blur-intensity="{{ config.blur_intensity }}">
+<body data-theme="{{ config.theme }}" data-font="{{ config.font }}" data-font-size="{{ config.font_size }}" data-line-height="{{ config.line_height }}" data-letter-spacing="{{ config.letter_spacing }}" data-focus-mode="{{ config.focus_mode }}" data-blur-intensity="{{ config.blur_intensity }}" data-contrast="{{ config.contrast }}" data-tts-voice="{{ config.tts_voice }}" data-tts-rate="{{ config.tts_rate }}">
 
   <a class="skip-link" href="#editor">Skip to editor</a>
 
@@ -64,42 +64,9 @@
       <input type="file" id="file-input" accept=".py,.txt" class="visually-hidden">
 
       <div class="tool-group">
-        <label for="font-select" class="visually-hidden">Font</label>
-        <select id="font-select" class="tool-select">
-          {% for key, font in fonts.items() %}
-          <option value="{{ key }}" {% if config.font == key %}selected{% endif %}>{{ font.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="tool-group">
-        <label for="font-size" class="visually-hidden">Font size</label>
-        <input type="range" id="font-size" min="12" max="28" step="1" value="{{ config.font_size }}" aria-label="Font size">
-        <span id="font-size-label" class="tool-label">{{ config.font_size }}px</span>
-      </div>
-
-      <div class="tool-group">
-        <label for="theme-select" class="visually-hidden">Theme</label>
-        <select id="theme-select" class="tool-select">
-          {% for key, theme in themes.items() %}
-          <option value="{{ key }}" {% if config.theme == key %}selected{% endif %}>{{ theme.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="tool-group">
-        <label for="focus-mode" class="visually-hidden">Focus mode</label>
-        <select id="focus-mode" class="tool-select">
-          <option value="off" {% if config.focus_mode == 'off' %}selected{% endif %}>Focus: Off</option>
-          <option value="gutter" {% if config.focus_mode == 'gutter' %}selected{% endif %}>Focus: Hide gutter</option>
-          <option value="lines" {% if config.focus_mode == 'lines' %}selected{% endif %}>Focus: Blur other lines</option>
-        </select>
-      </div>
-
-      <div class="tool-group">
-        <label for="tts-toggle" class="visually-hidden">Text to speech</label>
-        <button id="tts-toggle" class="btn btn-toggle {% if config.tts_enabled %}active{% endif %}" aria-pressed="{% if config.tts_enabled %}true{% else %}false{% endif %}" title="Read code aloud">
-          <span aria-hidden="true">&#128266;</span> TTS
+        <button id="btn-settings" class="btn btn-toggle" aria-haspopup="dialog"
+                title="Change how the editor looks and sounds">
+          <span aria-hidden="true">&#9881;</span> Settings
         </button>
       </div>
     </div>
@@ -127,6 +94,141 @@
     <p>AccessibleIDE &mdash; built with empathy for dyslexic and neurodivergent learners. <a href="https://github.com/hothilux-21/accessible-coding" target="_blank" rel="noopener">GitHub</a></p>
     <button id="btn-quit" class="btn btn-small quit-btn" hidden>Quit AccessibleIDE</button>
   </footer>
+
+  <!-- Settings. A native dialog gives us focus trapping, Escape to close
+       and an inert background for free, which matters more here than
+       anywhere else in the app. -->
+  <dialog id="settings-dialog" class="settings" aria-labelledby="settings-title">
+    <div class="settings-form">
+      <header class="settings-header">
+        <h2 id="settings-title" class="settings-title">Settings</h2>
+        <button id="btn-settings-close" class="btn btn-small" type="button" aria-label="Close settings">Close</button>
+      </header>
+
+      <div class="settings-body">
+
+        <fieldset class="settings-group">
+          <legend class="settings-legend">Reading</legend>
+          <p class="settings-hint" id="reading-hint">These change how the code looks. Nothing here needs a restart.</p>
+
+          <div class="field">
+            <label for="font-select">Font</label>
+            <select id="font-select" aria-describedby="reading-hint">
+              {% for key, font in fonts.items() %}
+              <option value="{{ key }}" {% if config.font == key %}selected{% endif %}>{{ font.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="font-size">Font size</label>
+            <div class="field-row">
+              <input type="range" id="font-size" min="12" max="28" step="1" value="{{ config.font_size }}">
+              <output id="font-size-label" class="field-value" for="font-size">{{ config.font_size }}px</output>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="line-height">Line height</label>
+            <div class="field-row">
+              <input type="range" id="line-height" min="1" max="2.4" step="0.1" value="{{ config.line_height }}">
+              <output id="line-height-label" class="field-value" for="line-height">{{ config.line_height }}</output>
+            </div>
+            <p class="field-help">How much space between lines. More space can make text easier to follow.</p>
+          </div>
+
+          <div class="field">
+            <label for="letter-spacing">Letter spacing</label>
+            <div class="field-row">
+              <input type="range" id="letter-spacing" min="-0.5" max="4" step="0.1" value="{{ config.letter_spacing }}">
+              <output id="letter-spacing-label" class="field-value" for="letter-spacing">{{ config.letter_spacing }}px</output>
+            </div>
+            <p class="field-help">Extra space between letters. Some readers find a little more easier to track.</p>
+          </div>
+        </fieldset>
+
+        <fieldset class="settings-group">
+          <legend class="settings-legend">Colours and contrast</legend>
+
+          <div class="field">
+            <label for="theme-select">Theme</label>
+            <select id="theme-select"></select>
+          </div>
+
+          <div class="field">
+            <label for="contrast-select">Text contrast</label>
+            <select id="contrast-select" aria-describedby="contrast-help">
+              <option value="normal" {% if config.contrast != 'high' %}selected{% endif %}>Normal</option>
+              <option value="high" {% if config.contrast == 'high' %}selected{% endif %}>Extra high</option>
+            </select>
+            <p class="field-help" id="contrast-help">Extra high pushes the text and the background further apart. Try it if words blend together.</p>
+          </div>
+        </fieldset>
+
+        <fieldset class="settings-group">
+          <legend class="settings-legend">Focus</legend>
+          <p class="settings-hint" id="focus-hint">Focus mode narrows what you see, so it is easier to follow one spot at a time.</p>
+
+          <div class="field">
+            <label for="focus-mode">Focus mode</label>
+            <select id="focus-mode" aria-describedby="focus-hint">
+              <option value="off" {% if config.focus_mode == 'off' %}selected{% endif %}>Off</option>
+              <option value="gutter" {% if config.focus_mode == 'gutter' %}selected{% endif %}>Hide the line numbers</option>
+              <option value="lines" {% if config.focus_mode == 'lines' %}selected{% endif %}>Fade the other lines</option>
+            </select>
+          </div>
+
+          <div class="field" id="blur-field">
+            <label for="blur-intensity">How much to fade</label>
+            <div class="field-row">
+              <input type="range" id="blur-intensity" min="0" max="1" step="0.05" value="{{ config.blur_intensity }}">
+              <output id="blur-intensity-label" class="field-value" for="blur-intensity">{{ config.blur_intensity }}</output>
+            </div>
+            <p class="field-help">Only used when Focus mode is set to fade the other lines.</p>
+          </div>
+        </fieldset>
+
+        <fieldset class="settings-group">
+          <legend class="settings-legend">Reading aloud</legend>
+
+          <div class="field field-inline">
+            <label for="tts-toggle">Read results aloud</label>
+            <button id="tts-toggle" class="btn btn-toggle {% if config.tts_enabled %}active{% endif %}"
+                    type="button" role="switch" aria-checked="{% if config.tts_enabled %}true{% else %}false{% endif %}"
+                    aria-describedby="tts-help">
+              <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+              <span id="tts-state" class="switch-text">{% if config.tts_enabled %}On{% else %}Off{% endif %}</span>
+            </button>
+          </div>
+          <p class="field-help" id="tts-help">When this is on, AccessibleIDE reads the output and any error message out loud after you run your code.</p>
+
+          <div class="field">
+            <label for="tts-voice">Voice</label>
+            <select id="tts-voice" aria-describedby="tts-voice-help">
+              <option value="">System default</option>
+            </select>
+            <p class="field-help" id="tts-voice-help">The voices here come from your computer and Windows. Not every computer has the same ones.</p>
+          </div>
+
+          <div class="field">
+            <label for="tts-rate">Speaking speed</label>
+            <div class="field-row">
+              <input type="range" id="tts-rate" min="0.5" max="2" step="0.1" value="{{ config.tts_rate }}">
+              <output id="tts-rate-label" class="field-value" for="tts-rate">{{ config.tts_rate }}&times;</output>
+            </div>
+            <p class="field-help">Around 1 is a normal speaking pace. Below 1 is slower.</p>
+          </div>
+
+          <div class="field">
+            <span class="field-label-static" id="test-voice-label">Try the voice</span>
+            <button id="btn-test-voice" class="btn btn-small" type="button" aria-describedby="test-voice-label">Read a sample</button>
+          </div>
+        </fieldset>
+      </div>
+
+      <p id="settings-status" class="settings-status" role="status" aria-live="polite"></p>
+    </div>
+  </dialog>
 
   <script src="{{ url_for('static', filename='js/codemirror.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/python.min.js') }}"></script>

@@ -21,13 +21,41 @@
   var fontSelect = document.getElementById('font-select');
   var fontSize = document.getElementById('font-size');
   var fontSizeLabel = document.getElementById('font-size-label');
+  var lineHeight = document.getElementById('line-height');
+  var lineHeightLabel = document.getElementById('line-height-label');
+  var letterSpacing = document.getElementById('letter-spacing');
+  var letterSpacingLabel = document.getElementById('letter-spacing-label');
+  var blurIntensity = document.getElementById('blur-intensity');
+  var blurIntensityLabel = document.getElementById('blur-intensity-label');
+  var blurField = document.getElementById('blur-field');
   var themeSelect = document.getElementById('theme-select');
+  var contrastSelect = document.getElementById('contrast-select');
   var focusMode = document.getElementById('focus-mode');
+  var ttsVoice = document.getElementById('tts-voice');
+  var ttsRate = document.getElementById('tts-rate');
+  var ttsRateLabel = document.getElementById('tts-rate-label');
+  var ttsState = document.getElementById('tts-state');
+  var btnTestVoice = document.getElementById('btn-test-voice');
+  var settingsDialog = document.getElementById('settings-dialog');
+  var btnSettings = document.getElementById('btn-settings');
+  var btnSettingsClose = document.getElementById('btn-settings-close');
+  var settingsStatus = document.getElementById('settings-status');
   var btnQuit = document.getElementById('btn-quit');
 
   var body = document.body;
-  var ttsEnabled = btnTts.getAttribute('aria-pressed') === 'true';
+  var ttsEnabled = btnTts.getAttribute('aria-checked') === 'true';
   var accessCode = localStorage.getItem('accessible_ide_code') || '';
+  var settingsOpener = null;
+  var speechRate = 0.9;
+  var speechVoiceName = '';
+
+  // The blur slider only means something while the "fade the other
+  // lines" focus mode is on, so it is disabled rather than hidden -
+  // hidden would make the panel jump around as you switch modes.
+  function syncBlurField() {
+    blurField.classList.toggle('is-disabled', focusMode.value !== 'lines');
+    blurIntensity.disabled = focusMode.value !== 'lines';
+  }
 
   function promptForAccessCode() {
     var code = window.prompt('This site is protected. Enter the access code:');
@@ -53,57 +81,106 @@
     value: '# Welcome to AccessibleIDE!\n# Write Python code and press Run (or Ctrl+Enter).\n\nprint("Hello, world!")\n\nfor i in range(3):\n    print("Counting:", i)\n'
   });
 
-  // ---------- Theme colors (match server-side THEMES) ----------
-  var THEME_COLORS = {
+  // ---------- Theme colours ----------
+  // The palettes live on the server (routes.THEMES) and arrive from
+  // /api/themes. Keeping one copy means the code colours can never drift
+  // away from the colours in style.css. Until the fetch lands we fall
+  // back to the current theme's background so the editor never flashes
+  // white.
+  var themePalette = { bg: '#0b0b0b', fg: '#ffffff' };
+  var contrastMode = 'normal';
+
+  function fetchThemes() {
+    return fetch('/api/themes')
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        Object.keys(data).forEach(function (key) {
+          themePalette[key] = data[key];
+        });
+        populateThemeSelect(data);
+        applyTheme(themeSelect.value);
+      })
+      .catch(function () {
+        // Offline: the editor keeps its neutral fallback colours.
+      });
+  }
+
+  function populateThemeSelect(themes) {
+    var current = themeSelect.value || body.getAttribute('data-theme');
+    themeSelect.innerHTML = '';
+    Object.keys(themes).forEach(function (key) {
+      var option = document.createElement('option');
+      option.value = key;
+      option.textContent = themes[key].name;
+      if (key === current) option.selected = true;
+      themeSelect.appendChild(option);
+    });
+  }
+
+  // Extra-high contrast pushes the token colours apart without changing
+  // the hue, so a reader who needs more separation gets it without
+  // having to learn a new colour scheme.
+  function contrastAdjust(hex) {
+    if (contrastMode !== 'high') return hex;
+    var c = contrastPalette[themeSelect.value] || contrastPalette.high;
+    return c[hex] || hex;
+  }
+
+  // High-contrast remaps, keyed by the exact base hex so a palette change
+  // on the server can never silently skip a colour here. Each target is
+  // pushed further from its background, not re-hued, so the theme still
+  // looks like itself. Verified by tests/test_contrast.py.
+  // Keys cover fg, gutter_fg and every syntax colour.
+  var contrastPalette = {
     'high-contrast': {
-      bg: '#0d0d0d', fg: '#ffffff', selection: '#ffff00', cursor: '#ffff00',
-      gutterBg: '#1a1a1a', gutterFg: '#888888',
-      keyword: '#ff6b6b', string: '#69db7c', comment: '#888888',
-      number: '#ffd93d', function: '#74b9ff', variable: '#ffffff',
-      operator: '#ff6b6b', punctuation: '#ffffff'
+      '#ffffff': '#ffffff', '#a8a8a8': '#d0d0d0', '#e8e8e8': '#ffffff',
+      '#93e6a8': '#c9f5d6', '#ff9a9a': '#ffc9c9', '#93d4ff': '#c9e9ff',
+      '#b4b4b4': '#e0e0e0', '#ffd93d': '#ffe98a'
     },
-    'dark': {
-      bg: '#1e1e1e', fg: '#d4d4d4', selection: '#264f78', cursor: '#ffffff',
-      gutterBg: '#252526', gutterFg: '#858585',
-      keyword: '#569cd6', string: '#ce9178', comment: '#6a9955',
-      number: '#b5cea8', function: '#dcdcaa', variable: '#9cdcfe',
-      operator: '#d4d4d4', punctuation: '#d4d4d4'
+    dark: {
+      '#e6e6e6': '#ffffff', '#98a0a8': '#c0c8d0',
+      '#b9d99f': '#d6efc4', '#8fc0f5': '#c2ddff', '#93a18d': '#bccbb5',
+      '#e3c583': '#f5e3bd', '#8ad4e8': '#c4eef7', '#c8cfd6': '#e4e9ee',
+      '#c2cad2': '#dee4ea', '#dde2e8': '#f2f5f8'
     },
-    'pastel': {
-      bg: '#fdf6e3', fg: '#586e75', selection: '#eee8d5', cursor: '#586e75',
-      gutterBg: '#eee8d5', gutterFg: '#93a1a1',
-      keyword: '#cb4b16', string: '#859900', comment: '#93a1a1',
-      number: '#b58900', function: '#268bd2', variable: '#2aa198',
-      operator: '#586e75', punctuation: '#586e75'
+    pastel: {
+      '#453f3a': '#000000', '#6b6258': '#4a443c',
+      '#9a4a12': '#6d300a', '#427a20': '#2c5414', '#6f675c': '#4e4840',
+      '#8a6412': '#5e440b', '#1f6a94': '#144a67', '#3a4a52': '#26333a',
+      '#584f47': '#3a342e'
     },
-    'light': {
-      bg: '#ffffff', fg: '#333333', selection: '#add6ff', cursor: '#333333',
-      gutterBg: '#f5f5f5', gutterFg: '#999999',
-      keyword: '#0000ff', string: '#008000', comment: '#808080',
-      number: '#ff0000', function: '#800080', variable: '#333333',
-      operator: '#333333', punctuation: '#333333'
+    light: {
+      '#2b2b2b': '#000000', '#565656': '#3a3a3a',
+      '#7a1fa2': '#5c1478', '#1b6b2f': '#114a1f', '#5c5c5c': '#3d3d3d',
+      '#a03000': '#702100', '#0057b8': '#003d80', '#3d3d3d': '#262626',
+      '#4a4a4a': '#333333'
     }
   };
 
   function applyTheme(themeKey) {
-    var c = THEME_COLORS[themeKey] || THEME_COLORS['high-contrast'];
+    var c = themePalette[themeKey] || themePalette;
+    if (!c.bg) return;
     CodeMirror.defineStyle('accessible-theme', {
       'background': c.bg,
-      'color': c.fg,
-      'gutters': { 'background-color': c.gutterBg, 'color': c.gutterFg, 'border': 'none' },
-      'gutter': { 'background-color': c.gutterBg, 'color': c.gutterFg },
+      'color': contrastAdjust(c.fg),
+      'gutters': { 'background-color': c.gutter_bg, 'color': c.gutter_fg, 'border': 'none' },
+      'gutter': { 'background-color': c.gutter_bg, 'color': c.gutter_fg },
       'cursor': { 'border-left': '2px solid ' + c.cursor },
       'selected': { 'background-color': c.selection },
       'activeline-background': { 'background-color': c.selection + '33' },
-      'keyword': { 'color': c.keyword, 'font-weight': 'bold' },
-      'string': { 'color': c.string },
-      'comment': { 'color': c.comment, 'font-style': 'italic' },
-      'number': { 'color': c.number },
-      'def': { 'color': c.function },
-      'variable': { 'color': c.variable },
-      'operator': { 'color': c.operator },
-      'punctuation': { 'color': c.punctuation },
-      'builtin': { 'color': c.function }
+      'keyword': { 'color': contrastAdjust(c.keyword), 'font-weight': 'bold' },
+      'string': { 'color': contrastAdjust(c.string) },
+      'comment': { 'color': contrastAdjust(c.comment), 'font-style': 'italic' },
+      'number': { 'color': contrastAdjust(c.number) },
+      'def': { 'color': contrastAdjust(c.function) },
+      'variable-2': { 'color': contrastAdjust(c.variable) },
+      'variable-3': { 'color': contrastAdjust(c.function) },
+      'operator': { 'color': contrastAdjust(c.operator) },
+      'punctuation': { 'color': contrastAdjust(c.punctuation) },
+      'bracket': { 'color': contrastAdjust(c.punctuation) },
+      'builtin': { 'color': contrastAdjust(c.function) },
+      'atom': { 'color': contrastAdjust(c.number) },
+      'meta': { 'color': contrastAdjust(c.comment) }
     });
     editor.setOption('theme', 'accessible-theme');
   }
@@ -137,6 +214,38 @@
     editor.refresh();
   }
 
+  // These three were stored in the config and rendered onto <body>, but
+  // nothing ever read them, so the settings did nothing. The tokens
+  // already exist in style.css and body already consumes them, so all
+  // that is needed is to write the new value.
+  function applyLineHeight(value) {
+    body.style.setProperty('--line-height', value);
+    body.setAttribute('data-line-height', value);
+    lineHeightLabel.textContent = value;
+    editor.refresh();
+  }
+
+  function applyLetterSpacing(value) {
+    body.style.setProperty('--letter-spacing', value + 'px');
+    body.setAttribute('data-letter-spacing', value);
+    letterSpacingLabel.textContent = value + 'px';
+    editor.refresh();
+  }
+
+  // 0 = barely faded, 1 = strongly faded. A 0 value would hide the other
+  // lines completely, so we keep a floor of 0.15.
+  function applyBlurIntensity(value) {
+    var amount = 0.85 - (value * 0.7);
+    body.style.setProperty('--blur-amount', amount.toFixed(2));
+    blurIntensityLabel.textContent = value;
+  }
+
+  function applyContrast(value) {
+    contrastMode = value;
+    body.setAttribute('data-contrast', value);
+    applyTheme(themeSelect.value);
+  }
+
   function applyFocusMode(mode) {
     body.setAttribute('data-focus-mode', mode);
     // Hide the gutter through CodeMirror's native option rather than CSS
@@ -153,14 +262,112 @@
 
   // ---------- Config persistence ----------
   function saveConfig(partial) {
-    partial.access_code = accessCode;
-    fetch('/api/config', {
+    var payload = {};
+    Object.keys(partial).forEach(function (key) { payload[key] = partial[key]; });
+    payload.access_code = accessCode;
+    return fetch('/api/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(partial)
-    }).catch(function () {
-      // Offline or server error - settings still apply for this session
+      body: JSON.stringify(payload)
+    })
+      .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+      .then(function (result) {
+        if (result.ok) {
+          if (settingsStatus) {
+            settingsStatus.textContent = 'Saved.';
+            settingsStatus.classList.remove('is-error');
+          }
+        } else {
+          reportSaveError(result.data);
+        }
+        return result;
+      })
+      .catch(function () {
+        // Offline or server error - the setting still applies for this
+        // session, so say so rather than pretending it failed.
+        if (settingsStatus) {
+          settingsStatus.textContent = 'Changed for now. It will not be remembered until the app is back online.';
+          settingsStatus.classList.add('is-error');
+        }
+      });
+  }
+
+  function reportSaveError(data) {
+    if (!settingsStatus) return;
+    settingsStatus.textContent = (data && data.error) || 'That setting could not be saved.';
+    settingsStatus.classList.add('is-error');
+  }
+
+  // ---------- Settings dialog ----------
+  function openSettings() {
+    settingsOpener = document.activeElement;
+    syncBlurField();
+    if (typeof settingsDialog.showModal === 'function') {
+      settingsDialog.showModal();
+    } else {
+      settingsDialog.setAttribute('open', '');
+    }
+    // Land focus on the first real control, not the close button.
+    var first = settingsDialog.querySelector('select, input, button');
+    if (first) first.focus();
+  }
+
+  function closeSettings() {
+    if (typeof settingsDialog.close === 'function') {
+      settingsDialog.close();
+    } else {
+      settingsDialog.removeAttribute('open');
+    }
+    // Send focus back where it came from, so keyboard and screen reader
+    // users are not dropped at the top of the page.
+    if (settingsOpener && typeof settingsOpener.focus === 'function') {
+      settingsOpener.focus();
+    }
+  }
+
+  // ---------- TTS ----------
+  function loadVoices() {
+    if (!('speechSynthesis' in window) || !ttsVoice) return;
+    var voices = window.speechSynthesis.getVoices() || [];
+    if (!voices.length) return;
+
+    var current = ttsVoice.value;
+    ttsVoice.innerHTML = '';
+    var def = document.createElement('option');
+    def.value = '';
+    def.textContent = 'System default';
+    ttsVoice.appendChild(def);
+
+    voices.forEach(function (voice) {
+      var option = document.createElement('option');
+      // value holds the voice name; the language is shown so a reader
+      // can tell two similarly named voices apart.
+      option.value = voice.name;
+      option.textContent = voice.name + ' (' + voice.lang + ')';
+      ttsVoice.appendChild(option);
     });
+
+    if (current) ttsVoice.value = current;
+  }
+
+  function pickVoice() {
+    if (!('speechSynthesis' in window)) return null;
+    var voices = window.speechSynthesis.getVoices() || [];
+    for (var i = 0; i < voices.length; i++) {
+      if (voices[i].name === speechVoiceName) return voices[i];
+    }
+    return null;
+  }
+
+  function speak(text) {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    var utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = speechRate;
+    utterance.pitch = 1.0;
+    var voice = pickVoice();
+    if (voice) utterance.voice = voice;
+    window.speechSynthesis.speak(utterance);
   }
 
   // ---------- Run code ----------
@@ -298,16 +505,6 @@
     }
   }
 
-  // ---------- TTS ----------
-  function speak(text) {
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    var utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.9;
-    utterance.pitch = 1.0;
-    window.speechSynthesis.speak(utterance);
-  }
-
   // ---------- Event wiring ----------
   btnRun.addEventListener('click', runCode);
 
@@ -338,8 +535,9 @@
 
   btnTts.addEventListener('click', function () {
     ttsEnabled = !ttsEnabled;
-    btnTts.setAttribute('aria-pressed', ttsEnabled ? 'true' : 'false');
+    btnTts.setAttribute('aria-checked', ttsEnabled ? 'true' : 'false');
     btnTts.classList.toggle('active', ttsEnabled);
+    if (ttsState) ttsState.textContent = ttsEnabled ? 'On' : 'Off';
     saveConfig({ tts_enabled: ttsEnabled });
     if (ttsEnabled) {
       speak('Text to speech enabled.');
@@ -360,16 +558,80 @@
     saveConfig({ font_size: parseInt(fontSize.value, 10) });
   });
 
+  lineHeight.addEventListener('input', function () {
+    applyLineHeight(lineHeight.value);
+  });
+
+  lineHeight.addEventListener('change', function () {
+    saveConfig({ line_height: parseFloat(lineHeight.value) });
+  });
+
+  letterSpacing.addEventListener('input', function () {
+    applyLetterSpacing(letterSpacing.value);
+  });
+
+  letterSpacing.addEventListener('change', function () {
+    saveConfig({ letter_spacing: parseFloat(letterSpacing.value) });
+  });
+
+  blurIntensity.addEventListener('input', function () {
+    applyBlurIntensity(blurIntensity.value);
+  });
+
+  blurIntensity.addEventListener('change', function () {
+    saveConfig({ blur_intensity: parseFloat(blurIntensity.value) });
+  });
+
   themeSelect.addEventListener('change', function () {
     applyTheme(themeSelect.value);
     body.setAttribute('data-theme', themeSelect.value);
     saveConfig({ theme: themeSelect.value });
   });
 
+  contrastSelect.addEventListener('change', function () {
+    applyContrast(contrastSelect.value);
+    saveConfig({ contrast: contrastSelect.value });
+  });
+
   focusMode.addEventListener('change', function () {
     applyFocusMode(focusMode.value);
+    syncBlurField();
     saveConfig({ focus_mode: focusMode.value });
   });
+
+  ttsVoice.addEventListener('change', function () {
+    speechVoiceName = ttsVoice.value;
+    saveConfig({ tts_voice: speechVoiceName });
+  });
+
+  ttsRate.addEventListener('input', function () {
+    speechRate = parseFloat(ttsRate.value);
+    ttsRateLabel.textContent = speechRate.toFixed(1) + 'x';
+  });
+
+  ttsRate.addEventListener('change', function () {
+    saveConfig({ tts_rate: speechRate });
+  });
+
+  btnTestVoice.addEventListener('click', function () {
+    speak('This is how your code results will sound when they are read aloud.');
+  });
+
+  btnSettings.addEventListener('click', openSettings);
+
+  settingsDialog.addEventListener('cancel', function (event) {
+    // Escape was pressed. Let the dialog close itself, then put focus
+    // back on the button that opened it.
+    event.preventDefault();
+    closeSettings();
+  });
+
+  if (btnSettingsClose) {
+    btnSettingsClose.addEventListener('click', function (event) {
+      event.preventDefault();
+      closeSettings();
+    });
+  }
 
   // Keyboard shortcut: Ctrl+Enter to run
   editor.setOption('extraKeys', {
@@ -394,10 +656,30 @@
   }
 
   // ---------- Init ----------
+  contrastMode = contrastSelect.value || 'normal';
+  applyContrast(contrastMode);
   applyTheme(body.getAttribute('data-theme') || 'high-contrast');
   applyFont(body.getAttribute('data-font') || 'Atkinson Hyperlegible');
   applyFontSize(parseInt(body.getAttribute('data-font-size') || '16', 10));
+  applyLineHeight(body.getAttribute('data-line-height') || '1.6');
+  applyLetterSpacing(body.getAttribute('data-letter-spacing') || '0.5');
+  applyBlurIntensity(body.getAttribute('data-blur-intensity') || '0.5');
   applyFocusMode(body.getAttribute('data-focus-mode') || 'off');
+  syncBlurField();
+
+  speechRate = parseFloat(body.getAttribute('data-tts-rate') || ttsRate.value || '0.9');
+  speechVoiceName = body.getAttribute('data-tts-voice') || '';
+  ttsRateLabel.textContent = speechRate.toFixed(1) + 'x';
+
+  // Theme names and the voice list both come from the server, so the
+  // first paint uses the saved values and these fill in behind them.
+  fetchThemes();
+
+  if ('speechSynthesis' in window) {
+    loadVoices();
+    // Chrome and Edge populate the voice list asynchronously.
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  }
 
   // Custom fonts load asynchronously. Once they are ready, recalculate
   // the editor layout so the gutter width matches the real font metrics.

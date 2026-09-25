@@ -66,78 +66,87 @@ DEFAULT_CONFIG = {
     'theme': 'high-contrast',
     'focus_mode': 'gutter',
     'blur_intensity': 0.5,
+    'contrast': 'normal',
     'tts_enabled': False,
-    'tts_engine': 'pyttsx3'
+    'tts_engine': 'pyttsx3',
+    'tts_voice': '',
+    'tts_rate': 0.9,
 }
 
+# Editor palettes. These are the single source of truth: the settings
+# screen reads them from /api/themes and app.js builds the CodeMirror
+# theme from this response, so the code colours can never drift away
+# from the surrounding chrome.
+# Every value below is checked against its background for WCAG 2.1 AA
+# (4.5:1) by tests/test_contrast.py.
 THEMES = {
     'high-contrast': {
         'name': 'High Contrast',
-        'bg': '#0d0d0d',
+        'bg': '#0b0b0b',
         'fg': '#ffffff',
-        'selection': '#ffff00',
-        'cursor': '#ffff00',
-        'gutter_bg': '#1a1a1a',
-        'gutter_fg': '#888888',
-        'keyword': '#ff6b6b',
-        'string': '#69db7c',
-        'comment': '#888888',
+        'selection': '#4d4300',
+        'cursor': '#ffd93d',
+        'gutter_bg': '#161616',
+        'gutter_fg': '#a8a8a8',
+        'keyword': '#ff9a9a',
+        'string': '#93e6a8',
+        'comment': '#b4b4b4',
         'number': '#ffd93d',
-        'function': '#74b9ff',
+        'function': '#93d4ff',
         'variable': '#ffffff',
-        'operator': '#ff6b6b',
-        'punctuation': '#ffffff'
+        'operator': '#ff9a9a',
+        'punctuation': '#e8e8e8'
     },
     'dark': {
         'name': 'Dark',
-        'bg': '#1e1e1e',
-        'fg': '#d4d4d4',
-        'selection': '#264f78',
-        'cursor': '#ffffff',
-        'gutter_bg': '#252526',
-        'gutter_fg': '#858585',
-        'keyword': '#569cd6',
-        'string': '#ce9178',
-        'comment': '#6a9955',
-        'number': '#b5cea8',
-        'function': '#dcdcaa',
-        'variable': '#9cdcfe',
-        'operator': '#d4d4d4',
-        'punctuation': '#d4d4d4'
+        'bg': '#17181c',
+        'fg': '#e6e6e6',
+        'selection': '#234a6b',
+        'cursor': '#6bc1ff',
+        'gutter_bg': '#1f2126',
+        'gutter_fg': '#98a0a8',
+        'keyword': '#8fc0f5',
+        'string': '#b9d99f',
+        'comment': '#93a18d',
+        'number': '#e3c583',
+        'function': '#8ad4e8',
+        'variable': '#dde2e8',
+        'operator': '#c2cad2',
+        'punctuation': '#c8cfd6'
     },
     'pastel': {
         'name': 'Pastel',
-        'bg': '#fdf6e3',
-        'fg': '#586e75',
-        'selection': '#eee8d5',
-        'cursor': '#586e75',
-        'gutter_bg': '#eee8d5',
-        'gutter_fg': '#93a1a1',
-        'keyword': '#cb4b16',
-        'string': '#859900',
-        'comment': '#93a1a1',
-        'number': '#b58900',
-        'function': '#268bd2',
-        'variable': '#2aa198',
-        'operator': '#586e75',
-        'punctuation': '#586e75'
+        'bg': '#fbf6ec',
+        'fg': '#453f3a',
+        'selection': '#e3d2ab',
+        'cursor': '#b07d2c',
+        'gutter_bg': '#f2ecdf',
+        'gutter_fg': '#6b6258',
+        'keyword': '#9a4a12',
+        'string': '#427a20',
+        'comment': '#6f675c',
+        'number': '#8a6412',
+        'function': '#1f6a94',
+        'variable': '#3a4a52',
+        'operator': '#584f47',
+        'punctuation': '#584f47'
     },
     'light': {
         'name': 'Light',
-        'bg': '#ffffff',
-        'fg': '#333333',
-        'selection': '#add6ff',
-        'cursor': '#333333',
-        'gutter_bg': '#f5f5f5',
-        'gutter_fg': '#999999',
-        'keyword': '#0000ff',
-        'string': '#008000',
-        'comment': '#808080',
-        'number': '#ff0000',
-        'function': '#800080',
-        'variable': '#333333',
-        'operator': '#333333',
-        'punctuation': '#333333'
+        'bg': '#fcfcfc',
+        'fg': '#2b2b2b',
+        'selection': '#bcd6f2',
+        'cursor': '#0057b8',
+        'gutter_bg': '#f2f2f2',
+        'gutter_fg': '#565656',
+        'keyword': '#7a1fa2',
+        'string': '#1b6b2f',
+        'comment': '#5c5c5c',
+        'number': '#a03000',
+        'function': '#0057b8',
+        'variable': '#2b2b2b',
+        'operator': '#3d3d3d',
+        'punctuation': '#4a4a4a'
     }
 }
 
@@ -405,15 +414,50 @@ CONFIG_TYPES = {
     'theme': str,
     'focus_mode': str,
     'blur_intensity': (int, float),
+    'contrast': str,
     'tts_enabled': bool,
     'tts_engine': str,
+    'tts_voice': str,
+    'tts_rate': (int, float),
 }
 
 CONFIG_VALUES = {
     'font': set(FONTS.keys()),
     'theme': set(THEMES.keys()),
     'focus_mode': {'off', 'gutter', 'lines'},
+    'contrast': {'normal', 'high'},
 }
+
+# Numeric settings are bounded so a bad value can never produce an
+# unreadable screen. (minimum, maximum)
+CONFIG_RANGES = {
+    'font_size': (12, 28),
+    'line_height': (1.0, 2.4),
+    'letter_spacing': (-0.5, 4.0),
+    'blur_intensity': (0.0, 1.0),
+    'tts_rate': (0.5, 2.0),
+}
+
+# Voice names come from the operating system, so any string is allowed -
+# but not an unbounded one, and never markup.
+CONFIG_MAX_LENGTHS = {
+    'tts_voice': 200,
+    'tts_engine': 50,
+}
+
+
+def _describe(key, value):
+    """Plain-English explanation of why a setting was rejected."""
+    if key in CONFIG_RANGES:
+        low, high = CONFIG_RANGES[key]
+        return '{} must be between {} and {}.'.format(
+            key.replace('_', ' '), low, high)
+    if key in CONFIG_MAX_LENGTHS:
+        return '{} is too long.'.format(key.replace('_', ' '))
+    if key in CONFIG_VALUES:
+        return '{} must be one of: {}.'.format(
+            key.replace('_', ' '), ', '.join(sorted(CONFIG_VALUES[key])))
+    return '{} is not a setting we recognise.'.format(key.replace('_', ' '))
 
 
 @main_bp.route('/api/config', methods=['GET', 'POST'])
@@ -427,22 +471,44 @@ def config_api():
     if not access_code_ok(data):
         return jsonify({'success': False, 'error': 'Access code required.', 'code_required': True}), 403
 
+    # The access code is a gate, not a setting. Drop it before validating
+    # and before saving, otherwise it is rejected as an unknown key and
+    # would be written into config.json in plain text.
+    data = {key: value for key, value in data.items() if key != 'access_code'}
+
     # Validate keys and types
     invalid = []
     for key, value in data.items():
         if key not in CONFIG_TYPES:
-            invalid.append(key)
+            invalid.append(_describe(key, value))
             continue
-        if not isinstance(value, CONFIG_TYPES[key]):
-            invalid.append(key)
+        # bool is a subclass of int in Python, so True would otherwise
+        # pass every numeric check (True == 1) and be written into a
+        # numeric setting, where the browser then reads it as NaN.
+        if key == 'tts_enabled':
+            if not isinstance(value, bool):
+                invalid.append(_describe(key, value))
+                continue
+        elif isinstance(value, bool) or not isinstance(value, CONFIG_TYPES[key]):
+            invalid.append(_describe(key, value))
             continue
         if key in CONFIG_VALUES and value not in CONFIG_VALUES[key]:
-            invalid.append(key)
+            invalid.append(_describe(key, value))
+            continue
+        if key in CONFIG_RANGES:
+            low, high = CONFIG_RANGES[key]
+            if not (low <= value <= high):
+                invalid.append(_describe(key, value))
+                continue
+        if key in CONFIG_MAX_LENGTHS and isinstance(value, str) \
+                and len(value) > CONFIG_MAX_LENGTHS[key]:
+            invalid.append(_describe(key, value))
+            continue
 
     if invalid:
         return jsonify({
             'success': False,
-            'error': 'Invalid settings: ' + ', '.join(invalid) + '.'
+            'error': 'Could not save that setting. ' + ' '.join(invalid)
         }), 400
 
     config = load_config()

@@ -28,6 +28,10 @@ jobs:
         run: pip install flask pywebview
       - name: Run smoke tests
         run: python smoke_test.py
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -t . -v
+      - name: Check front end wiring
+        run: node tests/dom_harness.js
 
   build-windows:
     name: Build Windows exe
