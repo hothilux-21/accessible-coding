@@ -15,6 +15,7 @@ Run with:  PYTHONPATH=src python -m unittest discover -s tests -t .
 import pathlib
 import re
 import sys
+import tempfile
 import unittest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -69,12 +70,30 @@ REQUIRED_SETTINGS_IDS = (
 
 
 def render_index():
-    app = create_app()
-    app.config["TESTING"] = True
-    client = app.test_client()
-    response = client.get("/")
-    assert response.status_code == 200, response.status_code
-    return response.get_data(as_text=True)
+    """The page as a reader sees it, in English with default settings.
+
+    routes.py reads the config file as module-level globals, so without the
+    swap below this renders whatever the developer last chose on their own
+    machine. That made the suite order-dependent: a saved locale of "ar"
+    turned the English assertions here into failures that had nothing to do
+    with the code under test.
+    """
+    tmp = tempfile.TemporaryDirectory()
+    saved = (routes.CONFIG_DIR, routes.CONFIG_FILE, routes.ACCESS_CODE)
+    try:
+        routes.CONFIG_DIR = pathlib.Path(tmp.name)
+        routes.CONFIG_FILE = routes.CONFIG_DIR / "config.json"
+        routes.ACCESS_CODE = ""
+
+        app = create_app()
+        app.config["TESTING"] = True
+        client = app.test_client()
+        response = client.get("/")
+        assert response.status_code == 200, response.status_code
+        return response.get_data(as_text=True)
+    finally:
+        routes.CONFIG_DIR, routes.CONFIG_FILE, routes.ACCESS_CODE = saved
+        tmp.cleanup()
 
 
 class RenderedPageFixture(unittest.TestCase):

@@ -13,7 +13,6 @@ for a user, so it is worth a failing test.
 Run with:  PYTHONPATH=src python -m unittest discover -s tests -t .
 """
 
-import importlib.util
 import pathlib
 import re
 import sys
@@ -48,15 +47,13 @@ def _load_routes():
     if src not in sys.path:
         sys.path.append(src)
 
-    routes_path = REPO_ROOT / "src" / "accessible_ide" / "routes.py"
-    spec = importlib.util.spec_from_file_location(
-        "accessible_ide_routes_under_test", routes_path
-    )
-    if spec is None or spec.loader is None:
-        raise AssertionError(f"could not build an import spec for {routes_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    # Imported as a package member rather than by file path: routes.py is
+    # part of accessible_ide and uses package-relative imports, so loading
+    # it standalone would execute it with no parent package and blow up on
+    # the first "from . import".
+    from accessible_ide import routes
+
+    return routes
 
 
 def load_contrast_palette():

@@ -78,6 +78,7 @@ class NewSettingsTests(ConfigApiTestCase):
             "tts_enabled",
             "tts_voice",
             "tts_rate",
+            "locale",
         ):
             with self.subTest(key=key):
                 self.assertIn(key, routes.DEFAULT_CONFIG)
@@ -212,6 +213,91 @@ class ValidationTests(ConfigApiTestCase):
         self.assertEqual(stored["font_size"], 18)
         self.assertEqual(stored["contrast"], "high")
         self.assertEqual(stored["theme"], routes.DEFAULT_CONFIG["theme"])
+
+
+class LocaleTests(ConfigApiTestCase):
+    """The chosen interface language."""
+
+    def test_every_shipped_language_round_trips(self):
+        for code in ("en", "hi", "fr", "es", "ar"):
+            with self.subTest(locale=code):
+                self.assertEqual(self.post_settings(locale=code).status_code, 200)
+                self.assertEqual(self.get_settings()["locale"], code)
+
+    def test_a_language_the_app_does_not_ship_is_rejected(self):
+        # Saving "de" would leave the reader with a language picker showing
+        # German and an English interface, with no way back.
+        response = self.post_settings(locale="de")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.get_settings()["locale"], "en")
+
+    def test_a_non_string_language_is_rejected(self):
+        for value in (5, True, ["fr"], None, ""):
+            with self.subTest(value=value):
+                self.assertEqual(self.post_settings(locale=value).status_code, 400)
+
+    def test_the_rejection_names_the_setting_in_the_chosen_language(self):
+        # A reader who has chosen Hindi should not be handed an English
+        # sentence, and the sentence should quote the label they actually
+        # clicked rather than the key stored in the file. The saved
+        # language is the fallback, because the browser sends its own
+        # locale and this request is deliberately not carrying one.
+        from accessible_ide import i18n
+
+        label_key = i18n.CONFIG_LABELS["contrast"]
+        for code in ("en", "hi", "fr", "es", "ar"):
+            with self.subTest(locale=code):
+                self.assertEqual(self.post_settings(locale=code).status_code, 200)
+                error = self.post_settings(contrast="extra").get_json()["error"]
+                self.assertIn(i18n.load_catalogue(code)[label_key], error)
+                # The label, not the key someone would grep for in the file.
+                self.assertNotIn("'contrast'", error)
+                self.assertNotIn('"contrast"', error)
+
+    def test_a_sent_locale_beats_the_saved_one(self):
+        # The picker saves and reloads, so this is belt and braces, but it
+        # is what keeps an error in the language on screen if the save has
+        # not landed yet.
+        from accessible_ide import i18n
+
+        self.assertEqual(self.post_settings(locale="es").status_code, 200)
+        error = self.client.post(
+            "/api/config", json={"locale": "ar", "contrast": "extra"}
+        ).get_json()["error"]
+        self.assertIn(
+            i18n.load_catalogue("ar")[i18n.CONFIG_LABELS["contrast"]], error
+        )
+
+    def test_the_page_renders_in_the_saved_language(self):
+        self.assertEqual(self.post_settings(locale="es").status_code, 200)
+        page = self.client.get("/")
+        try:
+            body = page.data.decode("utf-8")
+        finally:
+            page.close()
+        self.assertIn('<html lang="es">', body)
+        self.assertIn("Ajustes", body)
+
+    def test_a_corrupt_locale_in_the_file_falls_back_to_english(self):
+        routes.CONFIG_FILE.write_text('{"locale": "klingon"}', encoding="utf-8")
+        page = self.client.get("/")
+        try:
+            body = page.data.decode("utf-8")
+        finally:
+            page.close()
+        self.assertIn('<html lang="en">', body)
+
+    def test_every_theme_name_is_translated(self):
+        # The theme picker is built from /api/themes, whose names are English.
+        # app.js looks each one up as theme.<key>, so every theme the server
+        # offers needs a catalogue entry in every language.
+        from accessible_ide import i18n
+
+        for code, theme in routes.THEMES.items():
+            for locale in i18n.LANGUAGES:
+                key = f"theme.{code}"
+                with self.subTest(theme=code, locale=locale):
+                    self.assertIn(key, i18n.load_catalogue(locale))
 
 
 class CodeColorTests(ConfigApiTestCase):

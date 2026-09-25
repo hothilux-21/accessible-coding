@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ locale }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AccessibleIDE - Code comfortably</title>
-  <meta name="description" content="A fully accessible IDE for dyslexic and neurodivergent learners.">
+  <title>{{ t('app.title') }}</title>
+  <meta name="description" content="{{ t('app.description') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/codemirror.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <!-- The two default fonts are preloaded so the first screen is drawn in
@@ -66,36 +66,57 @@
       font-weight: bold;
       font-display: swap;
     }
+    <!-- Mukta carries the Devanagari. It is in every font stack as a
+         fallback rather than a separate choice, so Hindi renders for a
+         reader who picked OpenDyslexic for their Latin text. -->
+    @font-face {
+      font-family: 'Mukta';
+      src: url('{{ url_for('main.serve_font', filename='Mukta-Regular.ttf') }}') format('truetype');
+      font-weight: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Mukta';
+      src: url('{{ url_for('main.serve_font', filename='Mukta-SemiBold.ttf') }}') format('truetype');
+      font-weight: 600;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Mukta';
+      src: url('{{ url_for('main.serve_font', filename='Mukta-Bold.ttf') }}') format('truetype');
+      font-weight: bold;
+      font-display: swap;
+    }
   </style>
 </head>
-<body data-theme="{{ config.theme }}" data-font="{{ config.font }}" data-font-size="{{ config.font_size }}" data-code-color="{{ config.code_color }}" data-line-height="{{ config.line_height }}" data-letter-spacing="{{ config.letter_spacing }}" data-focus-mode="{{ config.focus_mode }}" data-blur-intensity="{{ config.blur_intensity }}" data-contrast="{{ config.contrast }}" data-tts-voice="{{ config.tts_voice }}" data-tts-rate="{{ config.tts_rate }}">
+<body data-theme="{{ config.theme }}" data-font="{{ config.font }}" data-font-size="{{ config.font_size }}" data-code-color="{{ config.code_color }}" data-line-height="{{ config.line_height }}" data-letter-spacing="{{ config.letter_spacing }}" data-focus-mode="{{ config.focus_mode }}" data-blur-intensity="{{ config.blur_intensity }}" data-contrast="{{ config.contrast }}" data-tts-voice="{{ config.tts_voice }}" data-tts-rate="{{ config.tts_rate }}" data-locale="{{ locale }}" data-direction="{{ direction }}">
 
-  <a class="skip-link" href="#editor">Skip to editor</a>
+  <a class="skip-link" href="#editor">{{ t('app.skip_to_editor') }}</a>
 
   <header class="topbar" role="banner">
     <div class="brand">
       <span class="brand-logo" aria-hidden="true">&#128214;</span>
-      <h1 class="brand-name">AccessibleIDE</h1>
+      <h1 class="brand-name">{{ t('brand.name') }}</h1>
       <span class="version-badge">v0.2.2-beta</span>
     </div>
 
-    <div class="toolbar" role="toolbar" aria-label="Editor tools">
-      <button id="btn-run" class="btn btn-primary" title="Run code (Ctrl+Enter)">
-        <span aria-hidden="true">&#9654;</span> Run
+    <div class="toolbar" role="toolbar" aria-label="{{ t('nav.tools') }}">
+      <button id="btn-run" class="btn btn-primary" title="{{ t('nav.run_title') }}">
+        <span aria-hidden="true">&#9654;</span> {{ t('nav.run') }}
       </button>
 
       <div class="tool-group">
-        <button id="btn-save" class="btn btn-toggle" title="Save your code to a file">
-          <span aria-hidden="true">&#128190;</span> Save
+        <button id="btn-save" class="btn btn-toggle" title="{{ t('nav.save_title') }}">
+          <span aria-hidden="true">&#128190;</span> {{ t('nav.save') }}
         </button>
-        <button id="btn-open" class="btn btn-toggle" title="Open a Python file">
-          <span aria-hidden="true">&#128194;</span> Open
+        <button id="btn-open" class="btn btn-toggle" title="{{ t('nav.open_title') }}">
+          <span aria-hidden="true">&#128194;</span> {{ t('nav.open') }}
         </button>
       </div>
 
       <div class="tool-group">
-        <button id="btn-read-line" class="btn btn-toggle" title="Read the current line aloud">
-          <span aria-hidden="true">&#128266;</span> Read line
+        <button id="btn-read-line" class="btn btn-toggle" title="{{ t('nav.read_line_title') }}">
+          <span aria-hidden="true">&#128266;</span> {{ t('nav.read_line') }}
         </button>
       </div>
 
@@ -103,34 +124,34 @@
 
       <div class="tool-group">
         <button id="btn-settings" class="btn btn-toggle" aria-haspopup="dialog"
-                title="Change how the editor looks and sounds">
-          <span aria-hidden="true">&#9881;</span> Settings
+                title="{{ t('nav.settings_title') }}">
+          <span aria-hidden="true">&#9881;</span> {{ t('nav.settings') }}
         </button>
       </div>
     </div>
   </header>
 
   <main class="workspace" role="main">
-    <section class="editor-pane" aria-label="Code editor">
-      <div id="editor" class="editor" role="textbox" aria-label="Python code editor" aria-multiline="true"></div>
+    <section class="editor-pane" aria-label="{{ t('editor.label') }}">
+      <div id="editor" class="editor" role="textbox" aria-label="{{ t('editor.label') }}" aria-multiline="true"></div>
     </section>
 
-    <section class="output-pane" aria-label="Output">
+    <section class="output-pane" aria-label="{{ t('output.title') }}">
       <div class="output-header">
-        <h2 class="output-title">Output</h2>
-        <button id="btn-clear" class="btn btn-small">Clear</button>
+        <h2 class="output-title">{{ t('output.title') }}</h2>
+        <button id="btn-clear" class="btn btn-small">{{ t('output.clear') }}</button>
       </div>
       <pre id="output" class="output" aria-live="polite"></pre>
       <div id="error-panel" class="error-panel" role="alert" hidden>
-        <h3 class="error-title">&#9888; Something went wrong</h3>
+        <h3 class="error-title">&#9888; {{ t('error.title') }}</h3>
         <p id="error-message" class="error-message"></p>
       </div>
     </section>
   </main>
 
   <footer class="footer" role="contentinfo">
-    <p>AccessibleIDE &mdash; built with empathy for dyslexic and neurodivergent learners. <a href="https://github.com/hothilux-21/accessible-coding" target="_blank" rel="noopener">GitHub</a></p>
-    <button id="btn-quit" class="btn btn-small quit-btn" hidden>Quit AccessibleIDE</button>
+    <p>{{ t('footer.text') }} <a href="https://github.com/hothilux-21/accessible-coding" target="_blank" rel="noopener">{{ t('footer.github') }}</a></p>
+    <button id="btn-quit" class="btn btn-small quit-btn" hidden>{{ t('nav.quit') }}</button>
   </footer>
 
   <!-- Settings. A native dialog gives us focus trapping, Escape to close
@@ -139,18 +160,32 @@
   <dialog id="settings-dialog" class="settings" aria-labelledby="settings-title">
     <div class="settings-form">
       <header class="settings-header">
-        <h2 id="settings-title" class="settings-title">Settings</h2>
-        <button id="btn-settings-close" class="btn btn-small" type="button" aria-label="Close settings">Close</button>
+        <h2 id="settings-title" class="settings-title">{{ t('settings.title') }}</h2>
+        <button id="btn-settings-close" class="btn btn-small" type="button" aria-label="{{ t('settings.close_label') }}">{{ t('settings.close') }}</button>
       </header>
 
       <div class="settings-body">
 
         <fieldset class="settings-group">
-          <legend class="settings-legend">Reading</legend>
-          <p class="settings-hint" id="reading-hint">These change how the code looks. Nothing here needs a restart.</p>
+          <legend class="settings-legend">{{ t('group.language') }}</legend>
+          <div class="field">
+            <label for="language-select">{{ t('language.label') }}</label>
+            <select id="language-select">
+              {% for code, endonym_label, english_name, lang_direction in languages %}
+              <option value="{{ code }}" lang="{{ code }}"
+                      {% if config.locale == code %}selected{% endif %}>{{ endonym_label }}</option>
+              {% endfor %}
+            </select>
+            <p class="field-help">{{ t('language.help') }}</p>
+          </div>
+        </fieldset>
+
+        <fieldset class="settings-group">
+          <legend class="settings-legend">{{ t('group.reading') }}</legend>
+          <p class="settings-hint" id="reading-hint">{{ t('reading.hint') }}</p>
 
           <div class="field">
-            <label for="font-select">Font</label>
+            <label for="font-select">{{ t('reading.font') }}</label>
             <select id="font-select" aria-describedby="reading-hint">
               {% for key, font in fonts.items() %}
               <option value="{{ key }}"
@@ -163,7 +198,7 @@
           </div>
 
           <div class="field">
-            <label for="font-size">Font size</label>
+            <label for="font-size">{{ t('reading.font_size') }}</label>
             <div class="field-row">
               <input type="range" id="font-size" min="12" max="28" step="1" value="{{ config.font_size }}">
               <output id="font-size-label" class="field-value" for="font-size">{{ config.font_size }}px</output>
@@ -171,63 +206,63 @@
           </div>
 
           <div class="field">
-            <label for="line-height">Line height</label>
+            <label for="line-height">{{ t('reading.line_height') }}</label>
             <div class="field-row">
               <input type="range" id="line-height" min="1" max="2.4" step="0.1" value="{{ config.line_height }}">
               <output id="line-height-label" class="field-value" for="line-height">{{ config.line_height }}</output>
             </div>
-            <p class="field-help">How much space between lines. More space can make text easier to follow.</p>
+            <p class="field-help">{{ t('reading.line_height_help') }}</p>
           </div>
 
           <div class="field">
-            <label for="letter-spacing">Letter spacing</label>
+            <label for="letter-spacing">{{ t('reading.letter_spacing') }}</label>
             <div class="field-row">
               <input type="range" id="letter-spacing" min="-0.5" max="4" step="0.1" value="{{ config.letter_spacing }}">
               <output id="letter-spacing-label" class="field-value" for="letter-spacing">{{ config.letter_spacing }}px</output>
             </div>
-            <p class="field-help">Extra space between letters. Some readers find a little more easier to track.</p>
+            <p class="field-help">{{ t('reading.letter_spacing_help') }}</p>
           </div>
         </fieldset>
 
         <fieldset class="settings-group">
-          <legend class="settings-legend">Colours and contrast</legend>
+          <legend class="settings-legend">{{ t('group.colours') }}</legend>
 
           <div class="field">
-            <label for="theme-select">Theme</label>
+            <label for="theme-select">{{ t('colours.theme') }}</label>
             <select id="theme-select"></select>
           </div>
 
           <div class="field">
-            <label for="contrast-select">Text contrast</label>
+            <label for="contrast-select">{{ t('colours.contrast') }}</label>
             <select id="contrast-select" aria-describedby="contrast-help">
-              <option value="normal" {% if config.contrast != 'high' %}selected{% endif %}>Normal</option>
-              <option value="high" {% if config.contrast == 'high' %}selected{% endif %}>Extra high</option>
+              <option value="normal" {% if config.contrast != 'high' %}selected{% endif %}>{{ t('colours.contrast_normal') }}</option>
+              <option value="high" {% if config.contrast == 'high' %}selected{% endif %}>{{ t('colours.contrast_high') }}</option>
             </select>
-            <p class="field-help" id="contrast-help">Extra high pushes the text and the background further apart. Try it if words blend together.</p>
+            <p class="field-help" id="contrast-help">{{ t('colours.contrast_help') }}</p>
           </div>
         </fieldset>
 
         <fieldset class="settings-group">
-          <legend class="settings-legend">Try it out</legend>
-          <p class="settings-hint" id="test-hint">See how your font and colour look before you keep them. Everything here is saved straight away.</p>
+          <legend class="settings-legend">{{ t('group.try') }}</legend>
+          <p class="settings-hint" id="test-hint">{{ t('try.hint') }}</p>
 
           <div class="field">
-            <label for="sample-text">Words to try</label>
-            <input type="text" id="sample-text" value="The quick brown fox jumps over the lazy dog."
+            <label for="sample-text">{{ t('try.sample_text') }}</label>
+            <input type="text" id="sample-text" value="{{ t('try.sample_default') }}"
                    autocomplete="off" spellcheck="false" aria-describedby="test-hint">
-            <p class="field-help">Change the words to anything you like. The preview below follows along.</p>
+            <p class="field-help">{{ t('try.sample_help') }}</p>
           </div>
 
           <div class="preview-block">
-            <p class="preview-label" id="preview-label">Preview</p>
+            <p class="preview-label" id="preview-label">{{ t('try.preview') }}</p>
             <p class="font-preview" id="font-preview" aria-labelledby="preview-label" aria-describedby="preview-status">
-              <span id="font-preview-text">The quick brown fox jumps over the lazy dog.</span>
+              <span id="font-preview-text">{{ t('try.sample_default') }}</span>
             </p>
-            <p class="preview-status" id="preview-status">Using Atkinson Hyperlegible in the theme colour.</p>
+            <p class="preview-status" id="preview-status">{{ t('try.status_theme', config.font) }}</p>
           </div>
 
           <div class="field">
-            <span class="field-label" id="swatch-label">Code text colour</span>
+            <span class="field-label" id="swatch-label">{{ t('try.colour_label') }}</span>
             <div class="swatches" id="swatches" role="radiogroup" aria-labelledby="swatch-label">
               {% for value in ['#ffd93d', '#93e6a8', '#8ad4e8', '#8fc0f5', '#c9a8f0', '#ff9a9a', '#e3c583', '#b4b4b4', '#ffffff', '#000000'] %}
               <label class="swatch">
@@ -237,88 +272,86 @@
               </label>
               {% endfor %}
             </div>
-            <p class="field-help">Pick a square, or type any colour code below.</p>
+            <p class="field-help">{{ t('try.swatch_help') }}</p>
           </div>
 
           <div class="field">
-            <label for="code-color-hex">Colour code</label>
+            <label for="code-color-hex">{{ t('try.hex_label') }}</label>
             <div class="field-row">
               <input type="color" id="code-color-picker" value="{{ config.code_color or '#ffffff' }}"
-                     aria-label="Pick a colour with the colour picker">
+                     aria-label="{{ t('try.picker_label') }}">
               <input type="text" id="code-color-hex" class="hex-input" spellcheck="false" autocomplete="off"
                      inputmode="text" maxlength="7" placeholder="#ffd93d"
                      value="{{ config.code_color }}"
                      aria-describedby="colour-help colour-error">
             </div>
-            <p class="field-help" id="colour-help">
-              Starts with a #, then 3 or 6 letters or digits, like #ffd93d. Leave it empty to go back to the theme colour.
-            </p>
+            <p class="field-help" id="colour-help">{{ t('try.hex_help') }}</p>
             <p class="field-error" id="colour-error" role="alert" hidden></p>
           </div>
 
           <div class="field">
-            <button id="btn-reset-colour" class="btn btn-small" type="button">Use theme colour</button>
-            <p class="field-help">If a colour would be hard to read on your theme, the app nudges it until it is easy to read again.</p>
+            <button id="btn-reset-colour" class="btn btn-small" type="button">{{ t('try.reset') }}</button>
+            <p class="field-help">{{ t('try.nudge_help') }}</p>
           </div>
         </fieldset>
 
         <fieldset class="settings-group">
-          <legend class="settings-legend">Focus</legend>
-          <p class="settings-hint" id="focus-hint">Focus mode narrows what you see, so it is easier to follow one spot at a time.</p>
+          <legend class="settings-legend">{{ t('group.focus') }}</legend>
+          <p class="settings-hint" id="focus-hint">{{ t('focus.hint') }}</p>
 
           <div class="field">
-            <label for="focus-mode">Focus mode</label>
+            <label for="focus-mode">{{ t('focus.mode') }}</label>
             <select id="focus-mode" aria-describedby="focus-hint">
-              <option value="off" {% if config.focus_mode == 'off' %}selected{% endif %}>Off</option>
-              <option value="gutter" {% if config.focus_mode == 'gutter' %}selected{% endif %}>Hide the line numbers</option>
-              <option value="lines" {% if config.focus_mode == 'lines' %}selected{% endif %}>Fade the other lines</option>
+              <option value="off" {% if config.focus_mode == 'off' %}selected{% endif %}>{{ t('focus.off') }}</option>
+              <option value="gutter" {% if config.focus_mode == 'gutter' %}selected{% endif %}>{{ t('focus.gutter') }}</option>
+              <option value="lines" {% if config.focus_mode == 'lines' %}selected{% endif %}>{{ t('focus.lines') }}</option>
             </select>
           </div>
 
           <div class="field" id="blur-field">
-            <label for="blur-intensity">How much to fade</label>
+            <label for="blur-intensity">{{ t('focus.fade') }}</label>
             <div class="field-row">
               <input type="range" id="blur-intensity" min="0" max="1" step="0.05" value="{{ config.blur_intensity }}">
               <output id="blur-intensity-label" class="field-value" for="blur-intensity">{{ config.blur_intensity }}</output>
             </div>
-            <p class="field-help">Only used when Focus mode is set to fade the other lines.</p>
+            <p class="field-help">{{ t('focus.fade_help') }}</p>
           </div>
         </fieldset>
 
         <fieldset class="settings-group">
-          <legend class="settings-legend">Reading aloud</legend>
+          <legend class="settings-legend">{{ t('group.speak') }}</legend>
 
           <div class="field field-inline">
-            <label for="tts-toggle">Read results aloud</label>
+            <label for="tts-toggle">{{ t('speak.toggle') }}</label>
             <button id="tts-toggle" class="btn btn-toggle {% if config.tts_enabled %}active{% endif %}"
                     type="button" role="switch" aria-checked="{% if config.tts_enabled %}true{% else %}false{% endif %}"
                     aria-describedby="tts-help">
               <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
-              <span id="tts-state" class="switch-text">{% if config.tts_enabled %}On{% else %}Off{% endif %}</span>
+              <span id="tts-state" class="switch-text">{% if config.tts_enabled %}{{ t('speak.on') }}{% else %}{{ t('speak.off') }}{% endif %}</span>
             </button>
           </div>
-          <p class="field-help" id="tts-help">When this is on, AccessibleIDE reads the output and any error message out loud after you run your code.</p>
+          <p class="field-help" id="tts-help">{{ t('speak.help') }}</p>
 
           <div class="field">
-            <label for="tts-voice">Voice</label>
+            <label for="tts-voice">{{ t('speak.voice') }}</label>
             <select id="tts-voice" aria-describedby="tts-voice-help">
-              <option value="">System default</option>
+              <option value="">{{ t('speak.system_default') }}</option>
             </select>
-            <p class="field-help" id="tts-voice-help">The voices here come from your computer and Windows. Not every computer has the same ones.</p>
+            <p class="field-help" id="tts-voice-help">{{ t('speak.voice_help') }}</p>
           </div>
 
           <div class="field">
-            <label for="tts-rate">Speaking speed</label>
+            <label for="tts-rate">{{ t('speak.rate') }}</label>
             <div class="field-row">
               <input type="range" id="tts-rate" min="0.5" max="2" step="0.1" value="{{ config.tts_rate }}">
               <output id="tts-rate-label" class="field-value" for="tts-rate">{{ config.tts_rate }}&times;</output>
             </div>
-            <p class="field-help">Around 1 is a normal speaking pace. Below 1 is slower.</p>
+            <p class="field-help">{{ t('speak.rate_help') }}</p>
           </div>
 
           <div class="field">
-            <span class="field-label-static" id="test-voice-label">Try the voice</span>
-            <button id="btn-test-voice" class="btn btn-small" type="button" aria-describedby="test-voice-label">Read a sample</button>
+            <span class="field-label-static" id="test-voice-label">{{ t('speak.try') }}</span>
+            <button id="btn-test-voice" class="btn btn-small" type="button" aria-describedby="test-voice-label">{{ t('speak.sample') }}</button>
           </div>
         </fieldset>
       </div>
@@ -327,6 +360,11 @@
     </div>
   </dialog>
 
+  <!-- The active catalogue is embedded rather than fetched. The page is
+       already in the reader's language before this script runs, and a
+       language change reloads the page, so there is nothing to await. -->
+  <script id="i18n-data" type="application/json">{{ catalogue | tojson }}</script>
+  <script id="i18n-meta" type="application/json">{{ {'locale': locale, 'direction': direction} | tojson }}</script>
   <script src="{{ url_for('static', filename='js/codemirror.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/python.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/matchbrackets.min.js') }}"></script>

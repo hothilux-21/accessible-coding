@@ -29,6 +29,12 @@ const KNOWN_IDS = new Set([
   'font-bundled-note', 'sample-text', 'font-preview', 'font-preview-text',
   'preview-status', 'swatches', 'code-color-hex', 'code-color-picker',
   'colour-error', 'btn-reset-colour',
+  'language-select',
+  // The two JSON script blocks the server embeds. They are not elements
+  // app.js draws with, but without them every t() call falls back to
+  // returning the key, and this harness would stop testing translations
+  // at all while still reporting success.
+  'i18n-data', 'i18n-meta',
 ]);
 
 // The swatch colours, mirroring the list rendered into the panel.
@@ -43,6 +49,8 @@ const numericIds = new Set([
 
 const lookups = [];
 const noop = () => {};
+const reloads = [];
+let reloadsBefore = 0;
 
 function makeClassList() {
   const set = new Set();
@@ -163,6 +171,24 @@ CodeMirror.commands = {};
 
 const elements = new Map();
 
+// The real English catalogue, so the harness exercises the same
+// translations the browser would. Reading it from disk means a key that is
+// removed from en.json shows up here as a key rather than as empty text.
+const CATALOGUE = JSON.parse(
+  fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'accessible_ide', 'i18n', 'en.json'),
+    'utf8'
+  )
+);
+const I18N_SCRIPTS = {
+  'i18n-data': makeElement('i18n-data', {}, { textContent: JSON.stringify(CATALOGUE) }),
+  'i18n-meta': makeElement(
+    'i18n-meta',
+    {},
+    { textContent: JSON.stringify({ locale: 'en', direction: 'ltr' }) }
+  ),
+};
+
 const documentStub = {
   body: makeElement('body'),
   documentElement: makeElement('html'),
@@ -174,6 +200,17 @@ const documentStub = {
     if (id === 'font-select') {
       if (!elements.has('font-select')) elements.set('font-select', FONT_SELECT);
       return FONT_SELECT;
+    }
+    if (id in I18N_SCRIPTS) {
+      if (!elements.has(id)) elements.set(id, I18N_SCRIPTS[id]);
+      return elements.get(id);
+    }
+    if (id === 'language-select') {
+      // The stub's default value is a font name, which is not a locale.
+      if (!elements.has(id)) {
+        elements.set(id, makeElement(id, {}, { value: 'en' }));
+      }
+      return elements.get(id);
     }
     if (!KNOWN_IDS.has(id)) return null;
     if (!elements.has(id)) elements.set(id, makeElement(id));
@@ -188,7 +225,8 @@ const documentStub = {
 };
 
 const fetchCalls = [];
-function fetchStub(url) {
+const configPosts = [];
+function fetchStub(url, options) {
   fetchCalls.push(url);
   if (String(url).includes('/api/themes')) {
     return Promise.resolve({
@@ -198,6 +236,13 @@ function fetchStub(url) {
         dark: { name: 'Dark', bg: '#17181c', fg: '#e6e6e6' },
       }),
     });
+  }
+  if (String(url).includes('/api/config') && options && options.body) {
+    try {
+      configPosts.push(JSON.parse(options.body));
+    } catch (error) {
+      configPosts.push({ __unparseable: String(options.body) });
+    }
   }
   return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
 }
@@ -232,6 +277,7 @@ const sandbox = {
       protocol: 'http:',
       host: 'localhost:5000',
       origin: 'http://localhost:5000',
+      reload: () => { reloads.push(true); },
     },
     speechSynthesis: {
       getVoices: () => ([{ name: 'Test Voice', lang: 'en-GB' }]),
@@ -286,6 +332,8 @@ const interactions = [
   ['code-color-hex', 'input'], ['code-color-hex', 'change'],
   ['code-color-picker', 'input'], ['code-color-picker', 'change'],
   ['btn-reset-colour', 'click'],
+  // language-select is deliberately absent: it is fired below with a real
+  // language code, because the reload it triggers has to be counted.
 ];
 
 let fired = 0;
@@ -476,8 +524,80 @@ function runPanelChecks() {
   console.log('     "Use theme colour" clears the custom colour');
 }
 
+// ---------------------------------------------------------------------------
+// The language picker. Every string app.js shows now comes from the embedded
+// catalogue, so the checks here are that the catalogue is actually in use and
+// that choosing a language saves it and reloads, rather than only swapping
+// the JavaScript strings and leaving the markup in the old language.
+// ---------------------------------------------------------------------------
+function runLanguageChecks() {
+  const select = elements.get('language-select');
+  const body = documentStub.body.__attributes;
+  const before = configPosts.length;
+
+  // The firing loop did not touch this control, so nothing is in flight
+  // and the counts below are exact.
+  select.value = 'fr';
+  reloadsBefore = reloads.length;
+  fire('language-select', 'change');
+
+  const posted = configPosts.slice(before).map((p) => p.locale).filter(Boolean);
+  if (!posted.includes('fr')) {
+    failed = true;
+    console.log('FAIL choosing a language did not save it: ' +
+                JSON.stringify(configPosts.slice(before)));
+  }
+  if (body['data-locale'] !== 'fr') {
+    failed = true;
+    console.log(`FAIL data-locale is "${body['data-locale']}" after picking French`);
+  } else {
+    console.log('     choosing a language saves it and marks the page');
+  }
+
+  // The catalogue really is loaded, so t() returns words rather than keys.
+  const status = elements.get('preview-status');
+  if (status.textContent && status.textContent.indexOf('theme.') === 0) {
+    failed = true;
+    console.log('FAIL strings still show raw keys: ' + status.textContent);
+  } else {
+    console.log('     strings come from the catalogue, not raw keys');
+  }
+}
+
+// Reloading is what re-renders the markup - settings labels, aria labels and
+// titles - into the new language, which a JavaScript-only swap could never
+// do. The save is a promise, so this runs a tick after the change.
+function runLanguageReloadCheck() {
+  if (reloads.length !== reloadsBefore + 1) {
+    failed = true;
+    console.log(`FAIL choosing a language caused ${reloads.length - reloadsBefore} ` +
+                'reloads instead of one');
+  } else {
+    console.log('     the page reloads so the markup is re-rendered');
+  }
+  runLanguageNoopCheck();
+}
+
+// Picking the language already in use must not bounce the page.
+function runLanguageNoopCheck() {
+  const select = elements.get('language-select');
+  const beforeNoop = reloads.length;
+  select.value = 'fr';
+  fire('language-select', 'change');
+  setTimeout(() => {
+    if (reloads.length !== beforeNoop) {
+      failed = true;
+      console.log('FAIL re-picking the current language reloaded the page');
+    } else {
+      console.log('     re-picking the current language changes nothing');
+    }
+    console.log('     fetch calls: ' + (fetchCalls.length ? fetchCalls.join(', ') : '(none)'));
+    process.exit(failed ? 1 : 0);
+  }, 10);
+}
+
 setTimeout(() => {
   runPanelChecks();
-  console.log('     fetch calls: ' + (fetchCalls.length ? fetchCalls.join(', ') : '(none)'));
-  process.exit(failed ? 1 : 0);
+  runLanguageChecks();
+  setTimeout(runLanguageReloadCheck, 10);
 }, 50);

@@ -144,6 +144,56 @@ class BundledFontTests(unittest.TestCase):
                 last = [part.strip() for part in font["family"].split(",")][-1]
                 self.assertNotEqual(last, "cursive")
 
+    def _stack_parts(self, key):
+        """The families in a stack, with the CSS quoting removed."""
+        return [
+            part.strip().strip("'\"")
+            for part in routes.FONTS[key]["family"].split(",")
+        ]
+
+    def test_every_stack_carries_both_script_fallbacks(self):
+        # Mukta carries the Devanagari for Hindi, Almarai the Arabic. They
+        # sit in every stack rather than being separate choices, so a reader
+        # who picked OpenDyslexic for its Latin still gets readable Hindi
+        # instead of boxes.
+        for key in routes.FONTS:
+            with self.subTest(font=key):
+                parts = self._stack_parts(key)
+                self.assertIn("Mukta", parts, f"{key} cannot render Devanagari")
+                self.assertIn("Almarai", parts, f"{key} cannot render Arabic")
+
+    def test_script_fallbacks_come_after_the_chosen_font(self):
+        # The reader's pick has to win for the script it covers. Mukta and
+        # Almarai are fallbacks, not overrides.
+        for key in routes.FONTS:
+            with self.subTest(font=key):
+                parts = self._stack_parts(key)
+                first_fallback = min(parts.index("Mukta"), parts.index("Almarai"))
+                for chosen in parts[:first_fallback]:
+                    self.assertNotIn(chosen, ("Mukta", "Almarai"))
+                self.assertIn(
+                    parts[-1],
+                    ("sans-serif", "monospace"),
+                    "the stack must still end in a generic family",
+                )
+
+    def test_every_bundled_font_is_referenced_by_the_template(self):
+        # A font file nobody loads is dead weight in an offline app: it
+        # still has to be shipped, downloaded on install, and licence-
+        # audited forever. Mukta-ExtraLight sat in the folder for exactly
+        # this reason - nothing asks the stack for weight 200.
+        css = TEMPLATE.read_text(encoding="utf-8")
+        referenced = set(re.findall(r"filename='([^']+)'", css))
+        for path in sorted(FONT_DIR.iterdir()):
+            if path.suffix.lower() not in (".ttf", ".otf"):
+                continue
+            with self.subTest(font=path.name):
+                self.assertIn(
+                    path.name,
+                    referenced,
+                    f"{path.name} is bundled but no @font-face loads it",
+                )
+
     def test_fonts_endpoint_matches_the_served_files(self):
         app = create_app()
         app.config["TESTING"] = True

@@ -13,6 +13,8 @@ import signal
 import threading
 from pathlib import Path
 
+from . import i18n
+
 main_bp = Blueprint('main', __name__)
 
 # Access code for the web version. If set, /api/run and /api/config POST
@@ -61,6 +63,7 @@ CONFIG_FILE = CONFIG_DIR / 'config.json'
 DEFAULT_CONFIG = {
     'font': 'Atkinson Hyperlegible',
     'font_size': 16,
+    'locale': i18n.DEFAULT_LOCALE,
     # Empty means "use whatever the chosen theme says". Setting it to a
     # hex colour overrides the theme's foreground for code text only.
     'code_color': '',
@@ -172,17 +175,34 @@ THEMES = {
 # Those stand-ins are not bundled either: they are named so that a user
 # who has them installed, or who has installed them once, gets a
 # sensible result instead of a broken font.
+# Script fallbacks appended to every stack.
+#
+# None of the reading fonts carry Devanagari or Arabic, so without these a
+# Hindi or Arabic reader gets empty boxes no matter which font they picked.
+# The browser walks a font stack per character, which is what makes this
+# work in the reader's favour: Latin still renders in the font they chose,
+# Devanagari falls to Mukta and Arabic to Almarai, within the same line.
+# Mukta comes first because it has no Arabic; Almarai comes first in
+# Arabic only because nothing else in the stack has any.
+SCRIPT_FALLBACKS = ('"Mukta"', '"Almarai"')
+
+
+def _stack(*families, generic='sans-serif'):
+    """Build a CSS font stack that can always render the shipped languages."""
+    return ', '.join(list(families) + list(SCRIPT_FALLBACKS) + [generic])
+
+
 FONTS = {
     'OpenDyslexic': {
         'name': 'OpenDyslexic',
-        'family': '"OpenDyslexic3", "OpenDyslexic", sans-serif',
+        'family': _stack('"OpenDyslexic3"', '"OpenDyslexic"'),
         'files': ['OpenDyslexic3-Regular.ttf', 'OpenDyslexic3-Bold.ttf'],
         'bundled': True,
         'note': 'Designed for readers with dyslexia.'
     },
     'Atkinson Hyperlegible': {
         'name': 'Atkinson Hyperlegible',
-        'family': '"Atkinson Hyperlegible", sans-serif',
+        'family': _stack('"Atkinson Hyperlegible"'),
         'files': [
             'AtkinsonHyperlegible-Regular.ttf',
             'AtkinsonHyperlegible-Bold.ttf',
@@ -192,49 +212,42 @@ FONTS = {
     },
     'Lexend': {
         'name': 'Lexend',
-        'family': '"Lexend", sans-serif',
+        'family': _stack('"Lexend"'),
         'files': ['Lexend-Variable.ttf'],
         'bundled': True,
         'note': 'Designed for easy reading.'
     },
     'Nunito': {
         'name': 'Nunito',
-        'family': '"Nunito", sans-serif',
+        'family': _stack('"Nunito"'),
         'files': ['Nunito-Variable.ttf'],
         'bundled': True,
         'note': 'Rounded and open, which many readers find easier to track.'
     },
-    'Almarai': {
-        'name': 'Almarai (Arabic)',
-        'family': '"Almarai", sans-serif',
-        'files': ['Almarai-Regular.ttf', 'Almarai-Bold.ttf'],
-        'bundled': True,
-        'note': 'For Arabic text.'
-    },
     'Calibri': {
         'name': 'Calibri',
-        'family': '"Calibri", "Carlito", "Segoe UI", sans-serif',
+        'family': _stack('"Calibri"', '"Carlito"', '"Segoe UI"'),
         'files': [],
         'bundled': False,
         'note': 'From your computer. Carlito is used instead if Calibri is missing.'
     },
     'Arial': {
         'name': 'Arial',
-        'family': '"Arial", "Liberation Sans", "Helvetica", sans-serif',
+        'family': _stack('"Arial"', '"Liberation Sans"', '"Helvetica"'),
         'files': [],
         'bundled': False,
         'note': 'From your computer. Liberation Sans is used instead if Arial is missing.'
     },
     'Comic Sans MS': {
         'name': 'Comic Sans MS',
-        'family': '"Comic Sans MS", "Comic Sans", sans-serif',
+        'family': _stack('"Comic Sans MS"', '"Comic Sans"'),
         'files': [],
         'bundled': False,
         'note': 'From your computer.'
     },
     'Courier New': {
         'name': 'Courier New',
-        'family': '"Courier New", Courier, monospace',
+        'family': _stack('"Courier New"', 'Courier', generic='monospace'),
         'files': [],
         'bundled': False,
         'note': 'From your computer.'
@@ -258,6 +271,25 @@ def load_config():
     return DEFAULT_CONFIG.copy()
 
 
+def translator_for(locale):
+    """A ``t()`` for a locale, falling back to English for anything unknown.
+
+    Error text is built on the server, but the reader's language is chosen
+    in the browser. The client sends its locale with each run so the message
+    matches the language actually on screen right now, rather than whatever
+    was last written to disk.
+    """
+    return i18n.make_translator(i18n.normalise(locale) or i18n.DEFAULT_LOCALE)
+
+
+def request_locale(data):
+    """Locale for a request: the one the client sent, else the saved one."""
+    sent = i18n.normalise((data or {}).get('locale'))
+    if sent:
+        return sent
+    return i18n.normalise(load_config().get('locale')) or i18n.DEFAULT_LOCALE
+
+
 def save_config(config):
     """Save user configuration to JSON file."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -265,37 +297,40 @@ def save_config(config):
         json.dump(config, f, indent=2)
 
 
-def translate_error(error_output):
-    """Convert Python traceback to plain English.
+# The Python exception types we explain, in the order they are tried when
+# reading a traceback. Each one needs a python.<Name> key in every
+# catalogue; tests/test_error_translation.py checks that.
+PYTHON_ERROR_KEYS = (
+    'SyntaxError', 'IndentationError', 'NameError', 'TypeError', 'ValueError',
+    'IndexError', 'KeyError', 'AttributeError', 'ImportError',
+    'ModuleNotFoundError', 'ZeroDivisionError', 'FileNotFoundError',
+    'PermissionError', 'RecursionError', 'MemoryError', 'KeyboardInterrupt',
+    'EOFError',
+)
+
+
+def translate_error(error_output, t=None):
+    """Turn a Python traceback into a sentence a learner can act on.
 
     Returns a tuple: (friendly_message, line_number_or_None).
+
+    ``t`` is the reader's translator. It is optional so existing callers and
+    tests still get the English wording.
     """
-    lines = error_output.strip().split('\n')
+    say = t or i18n.make_translator(i18n.DEFAULT_LOCALE)
+
+    # ''.split('\n') is [''], not [], so an empty traceback needs its own
+    # check. Without it the reader saw a bare "Error: " and nothing else.
+    lines = [line for line in error_output.strip().split('\n') if line.strip()]
     if not lines:
-        return "An unknown error occurred.", None
+        return say('python.unknown'), None
     
     # Get the last line (actual error)
     last_line = lines[-1].strip()
     
     # Common error translations
     translations = {
-        'SyntaxError': 'There\'s a syntax error in your code. Check for missing parentheses, brackets, or quotes.',
-        'IndentationError': 'Indentation error. Python uses spaces to group code blocks. Make sure your indentation is consistent.',
-        'NameError': 'You\'re using a variable or function name that hasn\'t been defined yet.',
-        'TypeError': 'You\'re trying to do something with the wrong type of data (like adding text to a number).',
-        'ValueError': 'A function received a value of the right type but an inappropriate value.',
-        'IndexError': 'You\'re trying to access an index that doesn\'t exist in a list or string.',
-        'KeyError': 'You\'re trying to access a dictionary key that doesn\'t exist.',
-        'AttributeError': 'You\'re trying to use an attribute or method that doesn\'t exist on this object.',
-        'ImportError': 'Python can\'t find the module you\'re trying to import.',
-        'ModuleNotFoundError': 'The module you\'re trying to import isn\'t installed.',
-        'ZeroDivisionError': 'You\'re dividing by zero, which isn\'t allowed.',
-        'FileNotFoundError': 'The file you\'re trying to open doesn\'t exist.',
-        'PermissionError': 'You don\'t have permission to access this file.',
-        'RecursionError': 'Your function is calling itself too many times (infinite recursion).',
-        'MemoryError': 'Your program ran out of memory.',
-        'KeyboardInterrupt': 'The program was interrupted (Ctrl+C).',
-        'EOFError': 'Unexpected end of input.',
+        name: say(f'python.{name}') for name in PYTHON_ERROR_KEYS
     }
     
     # Extract error type
@@ -318,13 +353,13 @@ def translate_error(error_output):
                         match = re.search(r'line\s+(\d+)', part)
                         if match:
                             line_number = int(match.group(1))
-                        friendly += f' (around {part.strip()})'
+                        friendly += say('python.line_hint', part.strip())
                         break
                 break
         return friendly, line_number
     
     # Fallback: return last line simplified
-    return f"Error: {last_line}", None
+    return say('python.fallback', last_line), None
 
 
 def access_code_ok(data):
@@ -363,8 +398,14 @@ def client_ip():
     return request.remote_addr or 'unknown'
 
 
-def check_sandbox(code):
-    """Return (ok, message) for the sandboxed web runner."""
+def check_sandbox(code, t=None):
+    """Return (ok, message) for the sandboxed web runner.
+
+    ``t`` is the caller's translator. It is optional so existing tests and
+    any other caller still get plain English.
+    """
+    say = t or i18n.make_translator(i18n.DEFAULT_LOCALE)
+
     if not SANDBOX:
         return True, None
 
@@ -373,20 +414,12 @@ def check_sandbox(code):
         module = match.group(1)
         top = module.split('.')[0]
         if top in BLOCKED_IMPORTS:
-            return False, (
-                'This code uses a feature that is not allowed in the web '
-                'version (importing "{0}"). Try simpler code, or use the '
-                'desktop app for full Python.'.format(module)
-            )
+            return False, say('error.blocked_import', module)
 
     # Block dangerous builtins and patterns
     for pattern in BLOCKED_PATTERNS:
         if re.search(pattern, code):
-            return False, (
-                'This code uses a feature that is not allowed in the web '
-                'version. Try simpler code, or use the desktop app for full '
-                'Python.'
-            )
+            return False, say('error.blocked_general')
 
     return True, None
 
@@ -394,22 +427,29 @@ def check_sandbox(code):
 @main_bp.route('/')
 def index():
     config = load_config()
-    return render_template('index.html', 
+    locale = i18n.normalise(config.get('locale')) or i18n.DEFAULT_LOCALE
+    return render_template('index.html',
                          config=config,
                          themes=THEMES,
-                         fonts=FONTS)
+                         fonts=FONTS,
+                         locale=locale,
+                         direction=i18n.direction(locale),
+                         languages=i18n.available(),
+                         catalogue=i18n.load_catalogue(locale),
+                         t=i18n.make_translator(locale))
 
 
 @main_bp.route('/api/run', methods=['POST'])
 def run_code():
     data = request.get_json(silent=True) or {}
     code = data.get('code', '')
+    t = translator_for(request_locale(data))
 
     # Access code gate (web version)
     if not access_code_ok(data):
         return jsonify({
             'output': '',
-            'error': 'This site is protected. Enter the access code to run code.',
+            'error': t('error.access_code_run'),
             'error_line': None,
             'code_required': True
         }), 403
@@ -418,15 +458,15 @@ def run_code():
     if rate_limited(client_ip()):
         return jsonify({
             'output': '',
-            'error': 'Too many requests. Please wait a moment and try again.',
+            'error': t('error.too_many_requests'),
             'error_line': None
         }), 429
 
     if not code.strip():
-        return jsonify({'output': '', 'error': 'No code to run.', 'error_line': None})
+        return jsonify({'output': '', 'error': t('error.no_code'), 'error_line': None})
 
     # Sandbox check (web version)
-    ok, sandbox_message = check_sandbox(code)
+    ok, sandbox_message = check_sandbox(code, t)
     if not ok:
         return jsonify({'output': '', 'error': sandbox_message, 'error_line': None})
 
@@ -457,14 +497,14 @@ def run_code():
         error_line = None
         
         if error:
-            error, error_line = translate_error(error)
+            error, error_line = translate_error(error, t)
         
         return jsonify({'output': output, 'error': error, 'error_line': error_line})
     
     except subprocess.TimeoutExpired:
-        return jsonify({'output': '', 'error': 'Code timed out (10 second limit). Check for infinite loops.', 'error_line': None})
+        return jsonify({'output': '', 'error': t('error.timeout'), 'error_line': None})
     except Exception as e:
-        return jsonify({'output': '', 'error': f'Execution error: {str(e)}', 'error_line': None})
+        return jsonify({'output': '', 'error': t('python.fallback', str(e)), 'error_line': None})
     finally:
         # Clean up
         try:
@@ -478,6 +518,7 @@ CONFIG_TYPES = {
     'font': str,
     'font_size': int,
     'code_color': str,
+    'locale': str,
     'line_height': (int, float),
     'letter_spacing': (int, float),
     'theme': str,
@@ -495,6 +536,7 @@ CONFIG_VALUES = {
     'theme': set(THEMES.keys()),
     'focus_mode': {'off', 'gutter', 'lines'},
     'contrast': {'normal', 'high'},
+    'locale': set(i18n.LANGUAGES),
 }
 
 # Numeric settings are bounded so a bad value can never produce an
@@ -528,23 +570,24 @@ CONFIG_HEX_COLORS = {'code_color'}
 HEX_COLOR_RE = re.compile(r'^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$')
 
 
-def _describe(key, value):
-    """Plain-English explanation of why a setting was rejected."""
+def _describe(key, value, t):
+    """Plain explanation of why a setting was rejected.
+
+    The setting is named by its visible label ("Code text colour") rather
+    than its config key, so a reader is pointed at the control they used.
+    """
+    label = t(i18n.CONFIG_LABELS.get(key, key))
     if key in CONFIG_HEX_COLORS:
-        return (
-            '{} must be a colour like #1a1a1a, or left empty to use the '
-            'theme colour.'.format(key.replace('_', ' '))
-        )
+        return t('config.error_colour', label)
     if key in CONFIG_RANGES:
         low, high = CONFIG_RANGES[key]
-        return '{} must be between {} and {}.'.format(
-            key.replace('_', ' '), low, high)
+        return t('config.error_range', label, low, high)
     if key in CONFIG_MAX_LENGTHS:
-        return '{} is too long.'.format(key.replace('_', ' '))
+        return t('config.error_too_long', label)
     if key in CONFIG_VALUES:
-        return '{} must be one of: {}.'.format(
-            key.replace('_', ' '), ', '.join(sorted(CONFIG_VALUES[key])))
-    return '{} is not a setting we recognise.'.format(key.replace('_', ' '))
+        allowed = ', '.join(sorted(CONFIG_VALUES[key]))
+        return t('config.error_one_of', label, allowed)
+    return t('config.error_unknown', label)
 
 
 @main_bp.route('/api/config', methods=['GET', 'POST'])
@@ -553,10 +596,11 @@ def config_api():
         return jsonify(load_config())
 
     data = request.get_json(silent=True) or {}
+    t = translator_for(request_locale(data))
 
     # Access code gate (web version)
     if not access_code_ok(data):
-        return jsonify({'success': False, 'error': 'Access code required.', 'code_required': True}), 403
+        return jsonify({'success': False, 'error': t('error.access_required'), 'code_required': True}), 403
 
     # The access code is a gate, not a setting. Drop it before validating
     # and before saving, otherwise it is rejected as an unknown key and
@@ -567,20 +611,20 @@ def config_api():
     invalid = []
     for key, value in data.items():
         if key not in CONFIG_TYPES:
-            invalid.append(_describe(key, value))
+            invalid.append(_describe(key, value, t))
             continue
         # bool is a subclass of int in Python, so True would otherwise
         # pass every numeric check (True == 1) and be written into a
         # numeric setting, where the browser then reads it as NaN.
         if key == 'tts_enabled':
             if not isinstance(value, bool):
-                invalid.append(_describe(key, value))
+                invalid.append(_describe(key, value, t))
                 continue
         elif isinstance(value, bool) or not isinstance(value, CONFIG_TYPES[key]):
-            invalid.append(_describe(key, value))
+            invalid.append(_describe(key, value, t))
             continue
         if key in CONFIG_VALUES and value not in CONFIG_VALUES[key]:
-            invalid.append(_describe(key, value))
+            invalid.append(_describe(key, value, t))
             continue
         if key in CONFIG_HEX_COLORS:
             # An empty value is meaningful rather than missing: it means
@@ -588,22 +632,22 @@ def config_api():
             # button sends.
             if value and (not isinstance(value, str)
                           or not HEX_COLOR_RE.match(value)):
-                invalid.append(_describe(key, value))
+                invalid.append(_describe(key, value, t))
                 continue
         if key in CONFIG_RANGES:
             low, high = CONFIG_RANGES[key]
             if not (low <= value <= high):
-                invalid.append(_describe(key, value))
+                invalid.append(_describe(key, value, t))
                 continue
         if key in CONFIG_MAX_LENGTHS and isinstance(value, str) \
                 and len(value) > CONFIG_MAX_LENGTHS[key]:
-            invalid.append(_describe(key, value))
+            invalid.append(_describe(key, value, t))
             continue
 
     if invalid:
         return jsonify({
             'success': False,
-            'error': 'Could not save that setting. ' + ' '.join(invalid)
+            'error': t('config.error_prefix') + ' ' + ' '.join(invalid)
         }), 400
 
     config = load_config()
@@ -649,7 +693,8 @@ def health():
 def shutdown():
     """Stop the desktop app server. Local-only: never exposed on the web."""
     if os.environ.get('RENDER'):
-        return jsonify({'success': False, 'error': 'Not available on the web.'}), 403
+        t = translator_for(request_locale(request.get_json(silent=True) or {}))
+        return jsonify({'success': False, 'error': t('error.not_on_web')}), 403
 
     def _stop():
         time.sleep(0.3)  # let the response flush first

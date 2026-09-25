@@ -6,6 +6,32 @@
 (function () {
   'use strict';
 
+  // ---------- Translations ----------
+  // The server renders the page in the chosen language and embeds the same
+  // catalogue here, so every string below comes from one JSON file rather
+  // than being written out twice. A missing key shows the key itself, which
+  // is deliberate: tests/test_i18n.py fails on that, and a reader would
+  // rather see a gap than silently get English in the middle of Hindi.
+  var CATALOGUE = {};
+  var META = { locale: 'en', direction: 'ltr' };
+  try {
+    CATALOGUE = JSON.parse(document.getElementById('i18n-data').textContent) || {};
+    META = JSON.parse(document.getElementById('i18n-meta').textContent) || META;
+  } catch (err) {
+    // No embedded catalogue: fall back to whatever the server already put
+    // in the page. The page still works, just without JS-side strings.
+  }
+
+  function t(key) {
+    var text = CATALOGUE[key];
+    if (typeof text !== 'string') return key;
+    var args = Array.prototype.slice.call(arguments, 1);
+    for (var i = 0; i < args.length; i++) {
+      text = text.split('{' + i + '}').join(args[i]);
+    }
+    return text;
+  }
+
   // ---------- Elements ----------
   var editorEl = document.getElementById('editor');
   var outputEl = document.getElementById('output');
@@ -51,6 +77,7 @@
   var codeColorPicker = document.getElementById('code-color-picker');
   var colourError = document.getElementById('colour-error');
   var btnResetColour = document.getElementById('btn-reset-colour');
+  var languageSelect = document.getElementById('language-select');
 
   var body = document.body;
   var ttsEnabled = btnTts.getAttribute('aria-checked') === 'true';
@@ -68,7 +95,7 @@
   }
 
   function promptForAccessCode() {
-    var code = window.prompt('This site is protected. Enter the access code:');
+    var code = window.prompt(t('error.access_code_prompt'));
     if (code) {
       accessCode = code;
       localStorage.setItem('accessible_ide_code', code);
@@ -121,7 +148,11 @@
     Object.keys(themes).forEach(function (key) {
       var option = document.createElement('option');
       option.value = key;
-      option.textContent = themes[key].name;
+      // Theme names are proper-noun-ish labels the reader has to scan, so
+      // they come from the catalogue like every other visible word. The
+      // server name is the fallback for a theme added without a translation.
+      var translated = CATALOGUE['theme.' + key];
+      option.textContent = typeof translated === 'string' ? translated : themes[key].name;
       if (key === current) option.selected = true;
       themeSelect.appendChild(option);
     });
@@ -368,6 +399,15 @@
     var payload = {};
     Object.keys(partial).forEach(function (key) { payload[key] = partial[key]; });
     payload.access_code = accessCode;
+    // The server needs a locale so the sentences it sends back match what
+    // is on screen. A caller that is changing the language passes its own,
+    // and that has to win - overwriting it here made the picker save
+    // nothing at all and reload straight back into the old language.
+    if (payload.locale) {
+      META.locale = payload.locale;
+    } else {
+      payload.locale = META.locale;
+    }
     return fetch('/api/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -377,7 +417,7 @@
       .then(function (result) {
         if (result.ok) {
           if (settingsStatus) {
-            settingsStatus.textContent = 'Saved.';
+            settingsStatus.textContent = t('settings.saved');
             settingsStatus.classList.remove('is-error');
           }
         } else {
@@ -389,7 +429,7 @@
         // Offline or server error - the setting still applies for this
         // session, so say so rather than pretending it failed.
         if (settingsStatus) {
-          settingsStatus.textContent = 'Changed for now. It will not be remembered until the app is back online.';
+          settingsStatus.textContent = t('settings.not_saved');
           settingsStatus.classList.add('is-error');
         }
       });
@@ -397,7 +437,7 @@
 
   function reportSaveError(data) {
     if (!settingsStatus) return;
-    settingsStatus.textContent = (data && data.error) || 'That setting could not be saved.';
+    settingsStatus.textContent = (data && data.error) || t('settings.save_failed');
     settingsStatus.classList.add('is-error');
   }
 
@@ -438,7 +478,7 @@
     ttsVoice.innerHTML = '';
     var def = document.createElement('option');
     def.value = '';
-    def.textContent = 'System default';
+    def.textContent = t('speak.system_default');
     ttsVoice.appendChild(def);
 
     voices.forEach(function (voice) {
@@ -498,14 +538,14 @@
 
   function runCode() {
     var code = editor.getValue();
-    outputEl.textContent = 'Running...';
+    outputEl.textContent = t('output.running');
     errorPanel.hidden = true;
     clearErrorMarkers();
 
     fetch('/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: code, access_code: accessCode })
+      body: JSON.stringify({ code: code, access_code: accessCode, locale: META.locale })
     })
       .then(function (res) { return res.json(); })
       .then(function (data) {
@@ -513,13 +553,13 @@
           if (promptForAccessCode()) {
             runCode();
           } else {
-            outputEl.textContent = 'Code running is locked.';
+            outputEl.textContent = t('output.locked');
             errorMessage.textContent = data.error;
             errorPanel.hidden = false;
           }
           return;
         }
-        outputEl.textContent = data.output || '(no output)';
+        outputEl.textContent = data.output || t('output.no_output');
         if (data.error) {
           errorMessage.textContent = data.error;
           errorPanel.hidden = false;
@@ -527,12 +567,12 @@
           if (ttsEnabled) speak(data.error);
         } else {
           errorPanel.hidden = true;
-          if (ttsEnabled) speak(data.output || 'Program finished.');
+          if (ttsEnabled) speak(data.output || t('speak.finished'));
         }
       })
       .catch(function () {
-        outputEl.textContent = 'Could not reach the code runner.';
-        errorMessage.textContent = 'The server is not responding. Please try again.';
+        outputEl.textContent = t('output.runner_unreachable');
+        errorMessage.textContent = t('output.server_down');
         errorPanel.hidden = false;
       });
   }
@@ -545,19 +585,19 @@
     if (window.showSaveFilePicker) {
       window.showSaveFilePicker({
         suggestedName: suggestedName,
-        types: [{ description: 'Python file', accept: { 'text/x-python': ['.py'] } }]
+        types: [{ description: t('file.python_type'), accept: { 'text/x-python': ['.py'] } }]
       })
         .then(function (handle) { return handle.createWritable(); })
         .then(function (writable) {
           return writable.write(content).then(function () { return writable.close(); });
         })
         .then(function () {
-          outputEl.textContent = 'File saved.';
+          outputEl.textContent = t('output.saved');
           errorPanel.hidden = true;
         })
         .catch(function (err) {
           if (err.name !== 'AbortError') {
-            outputEl.textContent = 'Could not save the file.';
+            outputEl.textContent = t('output.save_failed');
           }
         });
     } else {
@@ -571,7 +611,7 @@
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      outputEl.textContent = 'File downloaded.';
+      outputEl.textContent = t('output.downloaded');
       errorPanel.hidden = true;
     }
   }
@@ -579,19 +619,19 @@
   function openFile() {
     if (window.showOpenFilePicker) {
       window.showOpenFilePicker({
-        types: [{ description: 'Python file', accept: { 'text/x-python': ['.py'] } }]
+        types: [{ description: t('file.python_type'), accept: { 'text/x-python': ['.py'] } }]
       })
         .then(function (handles) { return handles[0].getFile(); })
         .then(function (file) { return file.text(); })
         .then(function (text) {
           editor.setValue(text);
           clearErrorMarkers();
-          outputEl.textContent = 'File opened.';
+          outputEl.textContent = t('output.opened');
           errorPanel.hidden = true;
         })
         .catch(function (err) {
           if (err.name !== 'AbortError') {
-            outputEl.textContent = 'Could not open the file.';
+            outputEl.textContent = t('output.open_failed');
           }
         });
     } else {
@@ -627,7 +667,7 @@
     reader.onload = function () {
       editor.setValue(reader.result);
       clearErrorMarkers();
-      outputEl.textContent = 'File opened.';
+      outputEl.textContent = t('output.opened');
       errorPanel.hidden = true;
     };
     reader.readAsText(file);
@@ -640,12 +680,30 @@
     ttsEnabled = !ttsEnabled;
     btnTts.setAttribute('aria-checked', ttsEnabled ? 'true' : 'false');
     btnTts.classList.toggle('active', ttsEnabled);
-    if (ttsState) ttsState.textContent = ttsEnabled ? 'On' : 'Off';
+    if (ttsState) ttsState.textContent = ttsEnabled ? t('speak.on') : t('speak.off');
     saveConfig({ tts_enabled: ttsEnabled });
     if (ttsEnabled) {
-      speak('Text to speech enabled.');
+      speak(t('speak.enabled'));
     }
   });
+
+  // ---------- Language ----------
+  // Changing the language re-renders the whole page rather than swapping
+  // text in place. Every string in the app comes from one catalogue, so the
+  // server can produce a page that is entirely in the new language --
+  // including the parts that live in HTML attributes, which a client-side
+  // pass would leave behind in the old language. The setting is saved
+  // first so a reload in the new language cannot bounce back.
+  if (languageSelect) {
+    languageSelect.addEventListener('change', function () {
+      var chosen = languageSelect.value;
+      if (!chosen || chosen === META.locale) return;
+      body.setAttribute('data-locale', chosen);
+      saveConfig({ locale: chosen }).then(function () {
+        window.location.reload();
+      });
+    });
+  }
 
   fontSelect.addEventListener('change', function () {
     applyFont(fontSelect.value);
@@ -665,9 +723,8 @@
     var bundled = option && option.getAttribute('data-bundled') === 'true';
     var note = option ? option.textContent : '';
     fontBundledNote.textContent = bundled
-      ? note + ' is included with the app.'
-      : note + ' comes from your computer. If it does not show, an ' +
-        'included font will be used instead.';
+      ? t('try.bundled', note)
+      : t('try.system_font', note);
     fontBundledNote.hidden = false;
   }
 
@@ -676,7 +733,7 @@
     var palette = themePalette[themeSelect.value] || themePalette;
     var shown = codeTextColor(palette);
     var option = fontSelect.options[fontSelect.selectedIndex];
-    var name = option ? option.textContent : 'your font';
+    var name = option ? option.textContent : t('try.your_font');
     var sample = sampleText && sampleText.value ? sampleText.value : ' ';
 
     fontPreview.style.fontFamily = fontFamilyFor(fontSelect.value);
@@ -689,14 +746,15 @@
     if (fontPreviewText) fontPreviewText.textContent = sample;
 
     if (previewStatus) {
-      var where = customCodeColor ? 'in ' + customCodeColor : 'in the theme colour';
       var nudged = customCodeColor
         && shown.toLowerCase() !== customCodeColor.toLowerCase();
-      previewStatus.textContent = 'Showing ' + name + ' ' + where + '.'
-        + (nudged
-          ? ' On this theme it was lightened or darkened to ' + shown +
-            ' so it stays easy to read.'
-          : '');
+      var text = customCodeColor
+        ? t('try.status_custom', name, customCodeColor)
+        : t('try.status_theme', name);
+      if (nudged) {
+        text += ' ' + t('try.status_nudged', shown);
+      }
+      previewStatus.textContent = text;
     }
   }
 
@@ -761,8 +819,7 @@
         showColourError('');
         setCodeColor('', true);
       } else {
-        showColourError('That is not a colour. Use # followed by 3 or 6 '
-          + 'letters or digits, like #ffd93d.');
+        showColourError(t('try.error_not_hex'));
       }
     });
   }
@@ -863,7 +920,7 @@
   });
 
   btnTestVoice.addEventListener('click', function () {
-    speak('This is how your code results will sound when they are read aloud.');
+    speak(t('speak.demo'));
   });
 
   btnSettings.addEventListener('click', openSettings);
