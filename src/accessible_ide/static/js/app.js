@@ -60,6 +60,12 @@
   var ttsVoice = document.getElementById('tts-voice');
   var ttsRate = document.getElementById('tts-rate');
   var ttsRateLabel = document.getElementById('tts-rate-label');
+  var ttsVoiceGenderEl = document.getElementById('tts-voice-gender');
+  var ttsHoverScopeEl = document.getElementById('tts-hover-scope');
+  var ttsHoverDelay = document.getElementById('tts-hover-delay');
+  var ttsHoverDelayLabel = document.getElementById('tts-hover-delay-label');
+  var ttsClickEl = document.getElementById('tts-click');
+  var ttsClickState = document.getElementById('tts-click-state');
   var ttsState = document.getElementById('tts-state');
   var btnReduceMotion = document.getElementById('reduce-motion');
   var reduceMotionState = document.getElementById('reduce-motion-state');
@@ -90,6 +96,10 @@
   var settingsOpener = null;
   var speechRate = 0.9;
   var speechVoiceName = '';
+  var ttsHoverScopeValue = 'controls';
+  var ttsHoverDelayMs = 600;
+  var ttsClickToSpeak = true;
+  var ttsVoiceGenderValue = 'male';
 
   // The blur slider only means something while the "fade the other
   // lines" focus mode is on, so it is disabled rather than hidden -
@@ -474,6 +484,124 @@
   }
 
   // ---------- TTS ----------
+  // The browser already knows how to read a line out loud; what it does not
+  // know is that this app is meant for people who would rather not have to
+  // work out what a button does before pressing it. So four separate
+  // decisions decide whether something is spoken: what its name is, whether
+  // it is worth saying, which voice says it, and whether to wait first.
+  //
+  // Nothing here touches the editor or the output. Those are the places
+  // where speaking on hover turns into noise - a reader moving the pointer
+  // across a screen of code would set off a queue of voices, and worse,
+  // cancel the error they were trying to hear.
+  var MAX_SPEECH_CHARS = 400;
+
+  // Never read aloud, at any scope: the places a hover would be a nuisance
+  // rather than a help.
+  var NEVER_SPOKEN = '#editor, #output, .CodeMirror, [contenteditable=""], '
+    + '[contenteditable="true"]';
+
+  // What "the things that do something" means for the hover scope. Inputs
+  // and selects are in here because their label is exactly the thing a
+  // reader wants before touching them, and the name of a text field is
+  // usually the one thing the page does not show in the same place.
+  var HOVER_CONTROLS = 'button, a[href], input, select, textarea, [role="switch"], '
+    + '[role="button"], [role="tab"], summary, label, legend, h1, h2, h3, h4, h5, h6, th';
+
+  // Only read when the scope is "all". This is the difference between a
+  // helpful app and an unusable one, which is why it is the reader's call.
+  var HOVER_TEXT = 'p, li, td, dt, dd, blockquote, figcaption, caption, '
+    + '.field-help, .settings-legend, .switch-text, .notice, .tagline';
+
+  function cleanText(text) {
+    return String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
+  }
+
+  // Element.closest is avoided deliberately: walking the chain by hand is
+  // the same answer, and the DOM test harness has no layout engine to
+  // implement it with.
+  function closestOf(el, selectors) {
+    var node = el;
+    while (node && node !== document.body) {
+      if (node.matches && node.matches(selectors)) return node;
+      node = node.parentNode;
+    }
+    return null;
+  }
+
+  function isHidden(el) {
+    return !!(closestOf(el, '[hidden], [aria-hidden="true"]'));
+  }
+
+  // The name of a thing, in the order a screen reader would go looking for
+  // it. Returns an empty string when there is genuinely nothing to say,
+  // which is the signal not to speak rather than to read out a stray
+  // punctuation mark.
+  function labelFor(el) {
+    if (!el) return '';
+    var tag = (el.tagName || '').toLowerCase();
+    var name = cleanText(el.getAttribute && el.getAttribute('aria-label'));
+
+    if (!name && el.labels && el.labels.length) {
+      name = cleanText(el.labels[0].textContent);
+    }
+    if (!name) {
+      var wrapping = closestOf(el, 'label');
+      if (wrapping) name = cleanText(wrapping.textContent);
+    }
+
+    // A control's own text: what a button says, or which option a
+    // dropdown is currently showing. Reading only the label of a dropdown
+    // would leave the reader knowing the field name and none of its
+    // contents.
+    var own = '';
+    if (tag === 'select') {
+      var option = el.options && el.selectedIndex >= 0
+        ? el.options[el.selectedIndex]
+        : null;
+      own = cleanText(option && (option.textContent || option.text));
+    } else if (tag === 'input') {
+      if (el.type === 'checkbox' || el.type === 'radio') {
+        own = el.checked ? t('speak.on') : t('speak.off');
+      } else if (el.type === 'range' || el.type === 'number') {
+        own = cleanText(el.value);
+      } else {
+        own = cleanText(el.getAttribute && el.getAttribute('placeholder'));
+      }
+    } else if (tag === 'img') {
+      own = '';
+    } else {
+      own = cleanText(el.textContent);
+    }
+
+    if (own === name) own = '';
+    if (name && own) return name + ', ' + own;
+    if (own) return own;
+    if (name) return name;
+
+    return cleanText(el.getAttribute && el.getAttribute('title'));
+  }
+
+  // A switch is read with its state, the way VoiceOver and NVDA read it.
+  // Without the state, "Reduce motion" sounds identical whether the app is
+  // about to obey the request or ignore it.
+  function withState(text, el) {
+    if (!el || !el.getAttribute) return text;
+    if (el.getAttribute('role') !== 'switch') return text;
+    return text + ', ' + t(el.getAttribute('aria-checked') === 'true'
+      ? 'speak.on' : 'speak.off');
+  }
+
+  function shorten(text) {
+    if (text.length <= MAX_SPEECH_CHARS) return text;
+    return text.slice(0, MAX_SPEECH_CHARS).replace(/\s+\S*$/, '') + t('speak.cut_off');
+  }
+
+  function whatToSay(el) {
+    if (!el || isHidden(el) || closestOf(el, NEVER_SPOKEN)) return '';
+    return shorten(withState(labelFor(el), el));
+  }
+
   function loadVoices() {
     if (!('speechSynthesis' in window) || !ttsVoice) return;
     var voices = window.speechSynthesis.getVoices() || [];
@@ -498,25 +626,142 @@
     if (current) ttsVoice.value = current;
   }
 
+  // The speech API does not report whether a voice is male or female, so
+  // this is a guess from the name, and it is only ever a guess: it is used
+  // to order the choices, never to hide a voice the reader picked.
+  var FEMALE_VOICE_WORDS = 'female|woman|girl|samantha|karen|serena|moira|tessa|fiona|'
+    + 'victoria|zira|allison|ava|amelie|katja|lucia|marlene|nicky|petra|helena|susan|'
+    + 'agnes|carla|catherine|alice|joana|leila|maja|nora|sonia|paulina';
+  var MALE_VOICE_WORDS = 'male|man|boy|david|daniel|alex|fred|thomas|oliver|james|'
+    + 'george|paul|mark|rishi|diego|mateo|riccardo|yannick|albert|aaron|ryan|markus';
+
+  function voiceGender(voice) {
+    var name = ((voice && voice.name) || '') + ' ' + ((voice && voice.voiceURI) || '');
+    var re = new RegExp('\\b(' + FEMALE_VOICE_WORDS + ')\\b', 'i');
+    if (re.test(name)) return 'female';
+    re = new RegExp('\\b(' + MALE_VOICE_WORDS + ')\\b', 'i');
+    if (re.test(name)) return 'male';
+    return 'unknown';
+  }
+
+  // Voices that sound the right language first, so a Hindi interface is
+  // not read by an English voice simply because it was listed earlier.
+  function voicesForLocale(voices) {
+    var wanted = String(META.locale || 'en').toLowerCase();
+    var exact = [];
+    var sameLanguage = [];
+    var rest = [];
+    voices.forEach(function (voice) {
+      var lang = String(voice.lang || '').toLowerCase();
+      if (lang === wanted) exact.push(voice);
+      else if (lang.split(/[-_]/)[0] === wanted.split(/[-_]/)[0]) sameLanguage.push(voice);
+      else rest.push(voice);
+    });
+    return exact.concat(sameLanguage, rest);
+  }
+
   function pickVoice() {
     if (!('speechSynthesis' in window)) return null;
     var voices = window.speechSynthesis.getVoices() || [];
+    if (!voices.length) return null;
+
+    // A voice the reader chose themselves always wins, whatever the
+    // gender preference says. They can see the name; the app cannot.
     for (var i = 0; i < voices.length; i++) {
-      if (voices[i].name === speechVoiceName) return voices[i];
+      if (speechVoiceName && voices[i].name === speechVoiceName) return voices[i];
     }
+    if (speechVoiceName || ttsVoiceGenderValue === 'any') return null;
+
+    var ordered = voicesForLocale(voices);
+    for (var j = 0; j < ordered.length; j++) {
+      if (voiceGender(ordered[j]) === ttsVoiceGenderValue) return ordered[j];
+    }
+    // Nothing installed matches the preference. Saying nothing would be
+    // worse than a wrong guess, so the browser picks its own default.
     return null;
   }
 
   function speak(text) {
     if (!('speechSynthesis' in window)) return;
+    var words = cleanText(text);
+    if (!words) return;
     window.speechSynthesis.cancel();
-    var utterance = new SpeechSynthesisUtterance(text);
+    var utterance = new SpeechSynthesisUtterance(words);
     utterance.rate = speechRate;
     utterance.pitch = 1.0;
+    // Without this the voice reads Hindi and French words in an English
+    // accent, which is the one thing that makes a foreign interface
+    // genuinely hard to follow.
+    if (META.locale) utterance.lang = META.locale;
     var voice = pickVoice();
     if (voice) utterance.voice = voice;
     window.speechSynthesis.speak(utterance);
   }
+
+  // ---------- Hover and click ----------
+  // Both are delegated from the document, so the page does not grow a
+  // listener every time the editor is redrawn.
+  var hoverTimer = null;
+  var hoverTarget = null;
+
+  function hoverTargetFor(el) {
+    if (ttsHoverScope === 'off' || !ttsEnabled) return null;
+    var control = closestOf(el, HOVER_CONTROLS);
+    if (control) return control;
+    if (ttsHoverScope !== 'all') return null;
+    return closestOf(el, HOVER_TEXT);
+  }
+
+  function clearHover() {
+    if (hoverTimer !== null) {
+      clearTimeout(hoverTimer);
+      hoverTimer = null;
+    }
+    hoverTarget = null;
+  }
+
+  function onMouseOver(event) {
+    var target = hoverTargetFor(event && event.target);
+    if (!target) {
+      clearHover();
+      return;
+    }
+    // Moving between a button and the words inside it is still one thing
+    // under the pointer, and a screen reader would not repeat itself here.
+    if (target === hoverTarget) return;
+    clearHover();
+    hoverTarget = target;
+    hoverTimer = setTimeout(function () {
+      hoverTimer = null;
+      var words = whatToSay(hoverTarget);
+      if (words) speak(words);
+    }, Math.max(0, ttsHoverDelay || 0));
+  }
+
+  function onMouseOut(event) {
+    var from = hoverTargetFor(event && event.target);
+    if (!from) return;
+    var to = hoverTargetFor(event && event.relatedTarget);
+    if (to === from) return;
+    clearHover();
+  }
+
+  // Capture phase, and this is the whole reason for it. A click on Run
+  // starts the program, whose output then speaks and replaces whatever was
+  // said here. Speaking the button name afterwards would cancel the output
+  // the reader actually asked for.
+  function onClick(event) {
+    if (!ttsClickToSpeak || !ttsEnabled) return;
+    var el = event && event.target;
+    if (!el || closestOf(el, NEVER_SPOKEN)) return;
+    if (el.disabled) return;
+    var words = whatToSay(el);
+    if (words) speak(words);
+  }
+
+  document.addEventListener('mouseover', onMouseOver);
+  document.addEventListener('mouseout', onMouseOut);
+  document.addEventListener('click', onClick, true);
 
   // ---------- Run code ----------
   var errorMarkers = [];
@@ -979,10 +1224,68 @@
     speechRate = parseFloat(ttsRate.value);
     ttsRateLabel.textContent = speechRate.toFixed(1) + 'x';
   });
-
   ttsRate.addEventListener('change', function () {
     saveConfig({ tts_rate: speechRate });
   });
+
+  // ---------- Hover and click settings ----------
+  // The delay is shown in whichever unit the reader can picture: 600 means
+  // nothing, 1500 means something. Asking someone to translate 1200 into
+  // "is that a long pause" is the kind of small arithmetic that gets in
+  // the way of the thing being read.
+  function paintHoverDelay(ms) {
+    if (!ttsHoverDelayLabel) return;
+    if (ms >= 1000) {
+      ttsHoverDelayLabel.textContent = (ms / 1000).toFixed(1) + 's';
+    } else {
+      ttsHoverDelayLabel.textContent = ms + 'ms';
+    }
+  }
+
+  function paintClickSwitch() {
+    if (!ttsClickEl) return;
+    ttsClickEl.setAttribute('aria-checked', ttsClickToSpeak ? 'true' : 'false');
+    ttsClickEl.classList.toggle('active', ttsClickToSpeak);
+    if (ttsClickState) {
+      ttsClickState.textContent = ttsClickToSpeak ? t('speak.on') : t('speak.off');
+    }
+  }
+
+  if (ttsHoverScopeEl) {
+    ttsHoverScopeEl.addEventListener('change', function () {
+      ttsHoverScopeValue = ttsHoverScopeEl.value;
+      // Anything already waiting would now be speaking the wrong amount of
+      // the page, so it is dropped rather than left to arrive late.
+      clearHover();
+      saveConfig({ tts_hover_scope: ttsHoverScopeValue });
+    });
+  }
+
+  if (ttsHoverDelay) {
+    ttsHoverDelay.addEventListener('input', function () {
+      ttsHoverDelayMs = parseFloat(ttsHoverDelay.value);
+      paintHoverDelay(ttsHoverDelayMs);
+    });
+    ttsHoverDelay.addEventListener('change', function () {
+      saveConfig({ tts_hover_delay: ttsHoverDelayMs });
+    });
+  }
+
+  if (ttsVoiceGenderEl) {
+    ttsVoiceGenderEl.addEventListener('change', function () {
+      ttsVoiceGenderValue = ttsVoiceGenderEl.value;
+      saveConfig({ tts_voice_gender: ttsVoiceGenderValue });
+    });
+  }
+
+  if (ttsClickEl) {
+    ttsClickEl.addEventListener('click', function () {
+      ttsClickToSpeak = !ttsClickToSpeak;
+      paintClickSwitch();
+      saveConfig({ tts_click_to_speak: ttsClickToSpeak });
+    });
+  }
+
 
   btnTestVoice.addEventListener('click', function () {
     speak(t('speak.demo'));
@@ -1056,6 +1359,24 @@
   speechRate = parseFloat(body.getAttribute('data-tts-rate') || ttsRate.value || '0.9');
   speechVoiceName = body.getAttribute('data-tts-voice') || '';
   ttsRateLabel.textContent = speechRate.toFixed(1) + 'x';
+
+  // The hover and click settings are read from the body rather than from
+  // the controls, so the saved answer is what governs from the first
+  // pointer movement - a reader should not have to open Settings for
+  // hovering to start working.
+  ttsHoverScopeValue = body.getAttribute('data-tts-hover-scope') || 'controls';
+  ttsHoverDelayMs = parseFloat(body.getAttribute('data-tts-hover-delay') || '600');
+  if (isNaN(ttsHoverDelayMs)) ttsHoverDelayMs = 600;
+  ttsVoiceGenderValue = body.getAttribute('data-tts-voice-gender') || 'male';
+  ttsClickToSpeak = true;
+  if (ttsClickEl) {
+    ttsClickToSpeak = ttsClickEl.getAttribute('aria-checked') === 'true';
+  }
+  if (ttsHoverScopeEl) ttsHoverScopeEl.value = ttsHoverScopeValue;
+  if (ttsHoverDelay) ttsHoverDelay.value = String(ttsHoverDelayMs);
+  if (ttsVoiceGenderEl) ttsVoiceGenderEl.value = ttsVoiceGenderValue;
+  paintHoverDelay(ttsHoverDelayMs);
+  paintClickSwitch();
 
   // Theme names and the voice list both come from the server, so the
   // first paint uses the saved values and these fill in behind them.

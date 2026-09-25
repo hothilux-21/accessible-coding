@@ -12,6 +12,7 @@ a developer machine may have one set.
 Run with:  PYTHONPATH=src python -m unittest discover -s tests -t .
 """
 
+import html
 import pathlib
 import sys
 import tempfile
@@ -432,6 +433,148 @@ class WrongTypeTests(ConfigApiTestCase):
                 message = self.post_settings(**{key: "maybe"}).get_json()["error"]
                 self.assertNotIn("not a setting we recognise", message)
                 self.assertIn("on or off", message)
+
+
+class HoverAndClickSpeechTests(ConfigApiTestCase):
+    """What gets read out, and on what terms.
+
+    The hover scope is the reader's answer to a question the app cannot
+    decide for them: how much of a screen is worth hearing. It has to
+    round-trip, it has to reject nonsense, and the delay has to stay
+    within bounds because a long enough delay is a broken feature.
+    """
+
+    def test_the_hover_scope_round_trips(self):
+        for value in ("off", "controls", "all"):
+            with self.subTest(scope=value):
+                self.assertEqual(
+                    self.post_settings(tts_hover_scope=value).status_code, 200
+                )
+                self.assertEqual(self.get_settings()["tts_hover_scope"], value)
+
+    def test_it_starts_on_the_middle_setting(self):
+        # Reading only the things that do something is the useful default.
+        # "all" would talk over a screen of code, and "off" would make the
+        # feature look broken.
+        self.assertEqual(self.get_settings()["tts_hover_scope"], "controls")
+
+    def test_a_scope_that_does_not_exist_is_refused(self):
+        for value in ("everything", "buttons", "", "ALL"):
+            with self.subTest(scope=value):
+                response = self.post_settings(tts_hover_scope=value)
+                self.assertEqual(response.status_code, 400, f"{value!r} was accepted")
+                self.assertEqual(self.get_settings()["tts_hover_scope"], "controls")
+
+    def test_the_delay_round_trips_and_is_bounded(self):
+        self.assertEqual(self.post_settings(tts_hover_delay=1500).status_code, 200)
+        self.assertEqual(self.get_settings()["tts_hover_delay"], 1500)
+        # Zero is legitimate: someone who rests the pointer on a control
+        # should not have to wait at all.
+        self.assertEqual(self.post_settings(tts_hover_delay=0).status_code, 200)
+        self.assertEqual(self.get_settings()["tts_hover_delay"], 0)
+        for value in (-1, 3001, 60000):
+            with self.subTest(delay=value):
+                self.assertEqual(
+                    self.post_settings(tts_hover_delay=value).status_code, 400
+                )
+
+    def test_click_to_speak_is_a_switch_with_a_real_default(self):
+        # On by default, because a click that says what was clicked is the
+        # behaviour a screen reader would give anyway.
+        self.assertIs(self.get_settings()["tts_click_to_speak"], True)
+        self.assertEqual(
+            self.post_settings(tts_click_to_speak=False).status_code, 200
+        )
+        self.assertIs(self.get_settings()["tts_click_to_speak"], False)
+
+    def test_the_preferred_voice_round_trips(self):
+        for value in ("male", "female", "any"):
+            with self.subTest(gender=value):
+                self.assertEqual(
+                    self.post_settings(tts_voice_gender=value).status_code, 200
+                )
+                self.assertEqual(self.get_settings()["tts_voice_gender"], value)
+
+    def test_a_male_voice_is_the_default(self):
+        self.assertEqual(self.get_settings()["tts_voice_gender"], "male")
+
+    def test_an_unknown_gender_is_refused(self):
+        for value in ("neutral", "MALE", "robot", ""):
+            with self.subTest(gender=value):
+                response = self.post_settings(tts_voice_gender=value)
+                self.assertEqual(response.status_code, 400, f"{value!r} was accepted")
+                self.assertEqual(self.get_settings()["tts_voice_gender"], "male")
+
+    def test_the_settings_reach_the_page_so_hover_works_before_settings_opens(self):
+        # The whole point is that hovering starts working from the saved
+        # answer, without the reader having to open the panel first.
+        self.post_settings(
+            tts_hover_scope="all", tts_hover_delay=1200, tts_voice_gender="female"
+        )
+        page = self.client.get("/").data.decode("utf-8")
+        self.assertIn('data-tts-hover-scope="all"', page)
+        self.assertIn('data-tts-hover-delay="1200"', page)
+        self.assertIn('data-tts-voice-gender="female"', page)
+
+    def test_the_delay_is_shown_in_a_unit_a_reader_can_picture(self):
+        # 1200ms is a number nobody can feel; 1.2s is.
+        self.post_settings(tts_hover_delay=1200)
+        page = self.client.get("/").data.decode("utf-8")
+        self.assertIn("1.2s", page)
+        self.post_settings(tts_hover_delay=600)
+        page = self.client.get("/").data.decode("utf-8")
+        self.assertIn("600ms", page)
+
+    def test_hover_and_click_controls_are_present_and_labelled(self):
+        page = self.client.get("/").data.decode("utf-8")
+        self.assertIn('id="tts-hover-scope"', page)
+        self.assertIn('id="tts-hover-delay"', page)
+        self.assertRegex(page, r'id="tts-click"[^>]*role="switch"')
+        self.assertIn('aria-describedby="tts-hover-scope-help"', page)
+        self.assertIn('aria-describedby="tts-click-help"', page)
+
+    def test_every_control_is_reachable_and_fits_on_a_phone(self):
+        # Four new controls in the reading group. The panel is the part of
+        # the app most likely to be used on a small screen, and a control
+        # that needs horizontal scrolling is a control nobody finds.
+        page = self.client.get("/").data.decode("utf-8")
+        for control in ("tts-hover-scope", "tts-hover-delay", "tts-click",
+                        "tts-voice-gender"):
+            with self.subTest(control=control):
+                self.assertIn(f'id="{control}"', page)
+
+    def test_the_hover_delay_slider_cannot_be_set_to_an_absurd_wait(self):
+        # The markup and the server have to agree on the bounds, or the
+        # slider will happily offer a value the server then refuses.
+        page = self.client.get("/").data.decode("utf-8")
+        self.assertIn('id="tts-hover-delay" min="0" max="3000" step="100"', page)
+        low, high = routes.CONFIG_RANGES["tts_hover_delay"]
+        self.assertEqual((low, high), (0, 3000))
+
+    def test_the_controls_say_they_do_not_touch_the_code(self):
+        # A reader who has been interrupted mid-edit by a voice talking over
+        # their code needs to be told it will not happen again. The promise
+        # has to survive translation, so this checks the rendered page in
+        # every language rather than the English source.
+        from accessible_ide import i18n
+
+        seen = {}
+        for code in i18n.LANGUAGES:
+            with self.subTest(locale=code):
+                self.post_settings(locale=code)
+                page = self.client.get("/").data.decode("utf-8")
+                expected = i18n.make_translator(code)("speak.click_help")
+                # Jinja escapes an apostrophe as &#39; where Python's html
+                # module writes &#x27;, so the two are reconciled here.
+                escaped = html.escape(expected, quote=False).replace("'", "&#39;")
+                self.assertTrue(
+                    escaped in page,
+                    f"the translated click help is missing from the {code} page",
+                )
+                seen[code] = expected
+        # If every language rendered the same words, the check above would
+        # pass for the wrong reason.
+        self.assertGreater(len(set(seen.values())), 1, seen)
 
 
 class ThemeApiTests(ConfigApiTestCase):

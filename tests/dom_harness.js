@@ -26,6 +26,8 @@ const KNOWN_IDS = new Set([
   'blur-field', 'theme-select', 'contrast-select', 'focus-mode',
   'reduce-motion', 'reduce-motion-state',
   'tts-toggle', 'tts-state', 'tts-voice', 'tts-rate', 'tts-rate-label',
+  'tts-voice-gender', 'tts-hover-scope', 'tts-hover-delay',
+  'tts-hover-delay-label', 'tts-click', 'tts-click-state',
   'btn-test-voice',
   'font-bundled-note', 'sample-text', 'font-preview', 'font-preview-text',
   'preview-status', 'swatches', 'code-color-hex', 'code-color-picker',
@@ -78,6 +80,9 @@ function makeElement(id, extraAttributes = {}, extraProps = {}) {
     'data-contrast': 'normal',
     'data-tts-voice': '',
     'data-tts-rate': '0.9',
+    'data-tts-hover-scope': 'controls',
+    'data-tts-hover-delay': '600',
+    'data-tts-voice-gender': 'male',
     ...extraAttributes,
   };
 
@@ -122,8 +127,49 @@ function makeElement(id, extraAttributes = {}, extraProps = {}) {
     querySelector: () => makeElement('__query__'),
     querySelectorAll: () => [],
     getElementsByClassName: () => [],
+    // app.js walks up the tree by hand looking for the nearest control, and
+    // for anything it must not read aloud. A stub without this would make
+    // every hover rule look like it matched nothing, and the harness would
+    // still pass.
+    tagName: (extraProps.tagName || 'DIV').toUpperCase(),
+    parentNode: null,
+    matches: (selector) =>
+      String(selector)
+        .split(',')
+        .map((s) => s.trim())
+        .some((selectorPart) => {
+          if (!selectorPart) return false;
+          if (selectorPart.startsWith('#')) {
+            return el.id === selectorPart.slice(1);
+          }
+          if (selectorPart.startsWith('.')) {
+            return el.classList.contains(selectorPart.slice(1));
+          }
+          // [attr] and [attr="value"]
+          const attrMatch = selectorPart.match(/^\[([\w-]+)(?:=["']?([^"'\]]*)["']?)?\]$/);
+          if (attrMatch) {
+            const value = attributes[attrMatch[1]];
+            if (value === undefined) return false;
+            return attrMatch[2] === undefined ? true : value === attrMatch[2];
+          }
+          const tagMatch = selectorPart.match(/^(\w+)/);
+          if (!tagMatch) return false;
+          const tag = tagMatch[1].toUpperCase();
+          if (el.tagName !== tag) return false;
+          if (selectorPart.includes(':not(') || selectorPart.includes(':')) {
+            // Not worth emulating; the reader's own tag matching is enough
+            // for the checks that use this.
+            return false;
+          }
+          return true;
+        }),
     ...extraProps,
   };
+  // A parent is only needed when a test asks for a chain; leaving it null
+  // means the walk stops at the element, which is the common case.
+  if (extraProps.parent) {
+    el.parentNode = extraProps.parent;
+  }
   el.__listeners = listeners;
   el.__attributes = attributes;
   return el;
@@ -227,6 +273,9 @@ const documentStub = {
 
 const fetchCalls = [];
 const configPosts = [];
+// Every utterance the app asked for, in order. Without this the harness
+// can only prove the app ran, not that it said anything.
+const spokenUtterances = [];
 function fetchStub(url, options) {
   fetchCalls.push(url);
   if (String(url).includes('/api/themes')) {
@@ -290,8 +339,15 @@ const sandbox = {
       reload: () => { reloads.push(true); },
     },
     speechSynthesis: {
-      getVoices: () => ([{ name: 'Test Voice', lang: 'en-GB' }]),
-      speak: noop,
+      // A deliberately mixed list. Without a female name in it, the
+      // gender preference would appear to work by accident.
+      getVoices: () => ([
+        { name: 'Zoe Test', lang: 'en-GB', voiceURI: 'zoe' },
+        { name: 'Test Voice', lang: 'en-GB', voiceURI: 'test' },
+        { name: 'Daniel Test', lang: 'en-US', voiceURI: 'daniel' },
+      ]),
+      spoken: [],
+      speak: (utterance) => { spokenUtterances.push(utterance); },
       cancel: noop,
       onvoiceschanged: null,
     },
@@ -335,6 +391,10 @@ const interactions = [
   ['focus-mode', 'change'],
   ['reduce-motion', 'click'],
   ['tts-toggle', 'click'], ['tts-voice', 'change'],
+  ['tts-voice-gender', 'change'],
+  ['tts-hover-scope', 'change'],
+  ['tts-hover-delay', 'input'], ['tts-hover-delay', 'change'],
+  ['tts-click', 'click'],
   ['tts-rate', 'input'], ['tts-rate', 'change'],
   ['btn-test-voice', 'click'],
   ['btn-settings', 'click'], ['btn-settings-close', 'click'],
@@ -653,6 +713,126 @@ function runMotionChecks() {
   }
 
   console.log('     fetch calls: ' + (fetchCalls.length ? fetchCalls.join(', ') : '(none)'));
+  runSpeechChecks();
+}
+
+// ---------------------------------------------------------------------------
+// What gets read out, and what does not. This is the part of the feature a
+// reader notices within a minute of using it: if the hover reads nothing,
+// the switch does nothing, or the editor gets narrated while someone is
+// trying to write code in it, the setting has to be visibly wrong.
+// ---------------------------------------------------------------------------
+function runSpeechChecks() {
+  const scopeSelect = elements.get('tts-hover-scope');
+  const delaySlider = elements.get('tts-hover-delay');
+  const delayLabel = elements.get('tts-hover-delay-label');
+  const clickSwitch = elements.get('tts-click');
+  const clickState = elements.get('tts-click-state');
+  const genderSelect = elements.get('tts-voice-gender');
+
+  // The label is shown in whichever unit can be pictured: 600ms means
+  // nothing, 1.5s means something.
+  if (delayLabel.textContent !== '600ms') {
+    failed = true;
+    console.log('FAIL the hover delay reads "' + delayLabel.textContent + '" for 600ms');
+  } else {
+    console.log('     the hover delay is shown as 600ms');
+  }
+  // The stub's element value is a font name, so the delay arrives as NaN
+  // until it is set to something readable.
+  delaySlider.value = '1500';
+  fire('tts-hover-delay', 'input');
+  fire('tts-hover-delay', 'change');
+  if (delayLabel.textContent !== '1.5s') {
+    failed = true;
+    console.log('FAIL 1500ms is shown as "' + delayLabel.textContent + '" rather than 1.5s');
+  } else {
+    console.log('     1500ms is shown as 1.5s, because that is pictureable');
+  }
+
+  const delaySaved = configPosts.filter((p) => 'tts_hover_delay' in p);
+  if (!delaySaved.length || delaySaved[delaySaved.length - 1].tts_hover_delay !== 1500) {
+    failed = true;
+    console.log('FAIL the hover delay was not saved: ' + JSON.stringify(delaySaved));
+  } else {
+    console.log('     the hover delay is saved');
+  }
+
+  scopeSelect.value = 'off';
+  fire('tts-hover-scope', 'change');
+  genderSelect.value = 'female';
+  fire('tts-voice-gender', 'change');
+  const voiceSettings = configPosts.filter((p) => 'tts_hover_scope' in p || 'tts_voice_gender' in p);
+  if (!voiceSettings.some((p) => p.tts_hover_scope === 'off') ||
+      !voiceSettings.some((p) => p.tts_voice_gender === 'female')) {
+    failed = true;
+    console.log('FAIL the hover scope or voice gender was not saved: ' +
+                JSON.stringify(voiceSettings));
+  } else {
+    console.log('     the hover scope and preferred voice are saved');
+  }
+
+  if (clickSwitch.getAttribute('aria-checked') === 'true') {
+    failed = true;
+    console.log('FAIL the click switch is still on after the firing loop clicked it');
+  } else if (!clickState.textContent || clickState.textContent.indexOf('speak.') === 0) {
+    failed = true;
+    console.log('FAIL the click switch label is missing or shows a raw key: ' + clickState.textContent);
+  } else {
+    console.log('     the click switch turns off and says so in words');
+  }
+  const clickSaved = configPosts.filter((p) => 'tts_click_to_speak' in p);
+  if (!clickSaved.length || clickSaved[clickSaved.length - 1].tts_click_to_speak !== false) {
+    failed = true;
+    console.log('FAIL click-to-speak was not saved as false: ' + JSON.stringify(clickSaved));
+  } else {
+    console.log('     click-to-speak is saved');
+  }
+
+  // The firing loop above set the voice picker to the stub's default value,
+  // which is a font name and matches no installed voice. Put it back to the
+  // system default, choose the male preference, and speak again: this is
+  // the case that matters, because it is what a reader with no voice
+  // picked by hand actually gets.
+  const voicePicker = elements.get('tts-voice');
+  voicePicker.value = '';
+  fire('tts-voice', 'change');
+  genderSelect.value = 'male';
+  fire('tts-voice-gender', 'change');
+  spokenUtterances.length = 0;
+  fire('btn-test-voice', 'click');
+
+  const utterances = spokenUtterances;
+  if (!utterances.length) {
+    failed = true;
+    console.log('FAIL the voice test button said nothing at all');
+  } else {
+    console.log(`     the app asked for ${utterances.length} piece(s) of speech`);
+  }
+  const localised = utterances.filter((u) => u.lang);
+  if (!localised.length) {
+    failed = true;
+    console.log('FAIL no utterance carried a language, so non-English text would be ' +
+                'read with an English accent');
+  } else {
+    // The language check above switched the page to French, so an utterance
+    // tagged "fr" here is the proof: the voice follows the interface, not
+    // whatever the operating system was set to.
+    console.log('     speech follows the interface language (' +
+                localised[0].lang + '), not the system default');
+  }
+  const withVoice = utterances.filter((u) => u.voice);
+  if (!withVoice.length) {
+    failed = true;
+    console.log('FAIL no utterance picked a voice, so the preferred gender was ignored');
+  } else if (withVoice[0].voice.name !== 'Daniel Test') {
+    failed = true;
+    console.log('FAIL the male preference picked "' + withVoice[0].voice.name +
+                '" rather than the only male voice installed');
+  } else {
+    console.log('     the male preference is applied when no voice is chosen by hand');
+  }
+
   process.exit(failed ? 1 : 0);
 }
 

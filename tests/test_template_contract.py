@@ -418,11 +418,18 @@ class ReducedMotionCssTests(unittest.TestCase):
 
     def test_the_operating_system_preference_is_still_honoured(self):
         # This one works with no JavaScript at all, so nothing moves before
-        # the first paint.
+        # the first paint. The "unset" qualifier is deliberate: once the
+        # reader has answered in Settings, their answer outranks the system.
         self.assertIn("@media (prefers-reduced-motion: reduce)", self.css)
         block = self.css.split("@media (prefers-reduced-motion: reduce)", 1)[1]
         block = block[: block.index("}")]
         self.assertIn("transition: none", block)
+        self.assertIn("body[data-reduce-motion='unset']", block)
+        self.assertNotIn(
+            "body[data-reduce-motion='unset']",
+            self.css.split("@media (prefers-reduced-motion: reduce)", 1)[0],
+            "the media query qualifier is not scoped to the media query",
+        )
 
     def test_pseudo_elements_are_covered_too(self):
         # ::before and ::after are where a decorative rule usually hides,

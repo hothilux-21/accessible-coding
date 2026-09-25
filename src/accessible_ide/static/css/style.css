@@ -1019,10 +1019,16 @@ body[data-contrast="high"][data-theme="pastel"] {
  * Until they choose, app.js leaves the attribute on "unset" and the media
  * query has the final say.
  */
+/* The "unset" qualifier is the whole reason the comment above is true. A
+   reader who has deliberately answered "no, I want movement here" must not
+   be overruled by the media query, or the switch would look broken in
+   exactly the case where it matters most. With the attribute left on
+   "unset" - which is what the server renders and what app.js leaves until
+   a choice is made - the system still decides. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  body[data-reduce-motion='unset'] *,
+  body[data-reduce-motion='unset'] *::before,
+  body[data-reduce-motion='unset'] *::after {
     transition: none !important;
     animation: none !important;
   }

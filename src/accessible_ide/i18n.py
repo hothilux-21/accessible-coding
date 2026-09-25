@@ -72,6 +72,10 @@ CONFIG_LABELS = {
     "tts_engine": "speak.voice",
     "tts_voice": "speak.voice",
     "tts_rate": "speak.rate",
+    "tts_hover_scope": "speak.hover_scope",
+    "tts_hover_delay": "speak.hover_delay",
+    "tts_click_to_speak": "speak.click",
+    "tts_voice_gender": "speak.voice_gender",
 }
 
 

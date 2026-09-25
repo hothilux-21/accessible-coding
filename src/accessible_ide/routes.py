@@ -83,6 +83,17 @@ DEFAULT_CONFIG = {
     'tts_engine': 'pyttsx3',
     'tts_voice': '',
     'tts_rate': 0.9,
+    # How much of the screen a hover announces: nothing, only the things
+    # that do something, or the words on the page as well. Default is the
+    # middle one, because a screen reader's own choice matters more.
+    'tts_hover_scope': 'controls',
+    # Hovering pauses here before speaking, so that passing the pointer
+    # across a row of buttons does not start a queue of voices.
+    'tts_hover_delay': 600,
+    'tts_click_to_speak': True,
+    # The speech API does not say whether a voice is male or female, so
+    # this is a preference applied to what is installed, not a promise.
+    'tts_voice_gender': 'male',
 }
 
 # Editor palettes. These are the single source of truth: the settings
@@ -536,6 +547,10 @@ CONFIG_TYPES = {
     'tts_engine': str,
     'tts_voice': str,
     'tts_rate': (int, float),
+    'tts_hover_scope': str,
+    'tts_hover_delay': (int, float),
+    'tts_click_to_speak': bool,
+    'tts_voice_gender': str,
 }
 
 CONFIG_VALUES = {
@@ -544,6 +559,8 @@ CONFIG_VALUES = {
     'focus_mode': {'off', 'gutter', 'lines'},
     'contrast': {'normal', 'high'},
     'locale': set(i18n.LANGUAGES),
+    'tts_hover_scope': {'off', 'controls', 'all'},
+    'tts_voice_gender': {'any', 'male', 'female'},
 }
 
 # Numeric settings are bounded so a bad value can never produce an
@@ -554,6 +571,11 @@ CONFIG_RANGES = {
     'letter_spacing': (-0.5, 4.0),
     'blur_intensity': (0.0, 1.0),
     'tts_rate': (0.5, 2.0),
+    # Milliseconds. Zero is allowed: someone who moves the pointer
+    # deliberately and slowly should not have to wait at all. The top is
+    # generous enough to be a deliberate request, low enough that nobody
+    # can end up waiting half a minute for a word.
+    'tts_hover_delay': (0, 3000),
 }
 
 # Voice names come from the operating system, so any string is allowed -
