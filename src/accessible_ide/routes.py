@@ -73,6 +73,12 @@ DEFAULT_CONFIG = {
     'focus_mode': 'gutter',
     'blur_intensity': 0.5,
     'contrast': 'normal',
+    # None means "the reader has not chosen yet", so the app follows the
+    # operating system's motion preference until they say otherwise. True
+    # or False is a deliberate choice and is then the only thing honoured -
+    # otherwise a reader who has asked for reduced motion at the OS level
+    # could never turn movement back on here.
+    'reduce_motion': None,
     'tts_enabled': False,
     'tts_engine': 'pyttsx3',
     'tts_voice': '',
@@ -525,6 +531,7 @@ CONFIG_TYPES = {
     'focus_mode': str,
     'blur_intensity': (int, float),
     'contrast': str,
+    'reduce_motion': bool,
     'tts_enabled': bool,
     'tts_engine': str,
     'tts_voice': str,
@@ -587,6 +594,13 @@ def _describe(key, value, t):
     if key in CONFIG_VALUES:
         allowed = ', '.join(sorted(CONFIG_VALUES[key]))
         return t('config.error_one_of', label, allowed)
+    # A setting we know, sent the wrong sort of value. Saying "not a setting
+    # we recognise" here would send the reader looking for a missing control
+    # that is sitting right in front of them.
+    if CONFIG_TYPES.get(key) is bool:
+        return t('config.error_on_off', label)
+    if key in CONFIG_TYPES:
+        return t('config.error_value', label)
     return t('config.error_unknown', label)
 
 
@@ -615,8 +629,10 @@ def config_api():
             continue
         # bool is a subclass of int in Python, so True would otherwise
         # pass every numeric check (True == 1) and be written into a
-        # numeric setting, where the browser then reads it as NaN.
-        if key == 'tts_enabled':
+        # numeric setting, where the browser then reads it as NaN. The
+        # mirror problem is a real bool arriving for a numeric setting, so
+        # this applies to every switch rather than one named key.
+        if CONFIG_TYPES[key] is bool:
             if not isinstance(value, bool):
                 invalid.append(_describe(key, value, t))
                 continue

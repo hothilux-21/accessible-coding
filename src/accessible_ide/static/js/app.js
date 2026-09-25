@@ -61,6 +61,8 @@
   var ttsRate = document.getElementById('tts-rate');
   var ttsRateLabel = document.getElementById('tts-rate-label');
   var ttsState = document.getElementById('tts-state');
+  var btnReduceMotion = document.getElementById('reduce-motion');
+  var reduceMotionState = document.getElementById('reduce-motion-state');
   var btnTestVoice = document.getElementById('btn-test-voice');
   var settingsDialog = document.getElementById('settings-dialog');
   var btnSettings = document.getElementById('btn-settings');
@@ -81,6 +83,9 @@
 
   var body = document.body;
   var ttsEnabled = btnTts.getAttribute('aria-checked') === 'true';
+  // True, false, or null while the reader has not chosen and the system
+  // preference is standing in.
+  var reduceMotion = null;
   var accessCode = localStorage.getItem('accessible_ide_code') || '';
   var settingsOpener = null;
   var speechRate = 0.9;
@@ -686,6 +691,66 @@
       speak(t('speak.enabled'));
     }
   });
+
+  // ---------- Motion ----------
+  // The CSS stops transitions and animations when the body says so. What
+  // this switch has to get right is the difference between "off" and "not
+  // chosen yet": until the reader picks, the operating system preference
+  // decides, and the switch shows whatever the system is asking for rather
+  // than sitting at a default the reader never agreed to.
+  var prefersReducedMotion = window.matchMedia
+    ? window.matchMedia('(prefers-reduced-motion: reduce)')
+    : { matches: false, addEventListener: null };
+
+  function systemPrefersReducedMotion() {
+    return !!(prefersReducedMotion && prefersReducedMotion.matches);
+  }
+
+  function paintMotionSwitch() {
+    if (!btnReduceMotion) return;
+    var on = reduceMotion;
+    btnReduceMotion.setAttribute('aria-checked', on ? 'true' : 'false');
+    btnReduceMotion.classList.toggle('active', on);
+    if (reduceMotionState) {
+      reduceMotionState.textContent = on ? t('switch.on') : t('switch.off');
+    }
+  }
+
+  function applyMotion(on) {
+    // 'unset' is never sent back: by this point the system preference has
+    // been folded in, and the attribute is always a real answer.
+    body.setAttribute('data-reduce-motion', on ? 'true' : 'false');
+    reduceMotion = on;
+    paintMotionSwitch();
+  }
+
+  reduceMotion = body.getAttribute('data-reduce-motion') === 'true';
+  if (body.getAttribute('data-reduce-motion') === 'unset') {
+    // First run, or nobody has chosen yet: follow the system without
+    // writing anything to disk, so a later change to the system setting
+    // still takes effect.
+    reduceMotion = systemPrefersReducedMotion();
+    body.setAttribute('data-reduce-motion', reduceMotion ? 'true' : 'false');
+  }
+  paintMotionSwitch();
+
+  // While nothing has been chosen, a change in the system setting should
+  // take effect without a reload. Once the reader has chosen, their choice
+  // stands and the system no longer gets a say here.
+  var motionChosenByReader = body.getAttribute('data-reduce-motion') !== 'unset';
+  if (prefersReducedMotion && prefersReducedMotion.addEventListener) {
+    prefersReducedMotion.addEventListener('change', function () {
+      if (!motionChosenByReader) applyMotion(systemPrefersReducedMotion());
+    });
+  }
+
+  if (btnReduceMotion) {
+    btnReduceMotion.addEventListener('click', function () {
+      applyMotion(!reduceMotion);
+      motionChosenByReader = true;
+      saveConfig({ reduce_motion: reduceMotion });
+    });
+  }
 
   // ---------- Language ----------
   // Changing the language re-renders the whole page rather than swapping

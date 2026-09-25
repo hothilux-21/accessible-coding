@@ -24,6 +24,7 @@ const KNOWN_IDS = new Set([
   'line-height', 'line-height-label', 'letter-spacing',
   'letter-spacing-label', 'blur-intensity', 'blur-intensity-label',
   'blur-field', 'theme-select', 'contrast-select', 'focus-mode',
+  'reduce-motion', 'reduce-motion-state',
   'tts-toggle', 'tts-state', 'tts-voice', 'tts-rate', 'tts-rate-label',
   'btn-test-voice',
   'font-bundled-note', 'sample-text', 'font-preview', 'font-preview-text',
@@ -251,6 +252,15 @@ const sandbox = {
   console,
   document: documentStub,
   navigator: { language: 'en-GB', userAgent: 'stub' },
+  // app.js asks the operating system whether motion should be reduced. The
+  // stub reports "no", which is the ordinary case; the seeding check below
+  // then proves the switch can also be flipped the other way.
+  matchMedia: (query) => ({
+    media: query,
+    matches: false,
+    addEventListener: noop,
+    removeEventListener: noop,
+  }),
   localStorage: { getItem: () => null, setItem: noop, removeItem: noop },
   fetch: fetchStub,
   setTimeout,
@@ -323,6 +333,7 @@ const interactions = [
   ['blur-intensity', 'input'], ['blur-intensity', 'change'],
   ['theme-select', 'change'], ['contrast-select', 'change'],
   ['focus-mode', 'change'],
+  ['reduce-motion', 'click'],
   ['tts-toggle', 'click'], ['tts-voice', 'change'],
   ['tts-rate', 'input'], ['tts-rate', 'change'],
   ['btn-test-voice', 'click'],
@@ -591,9 +602,58 @@ function runLanguageNoopCheck() {
     } else {
       console.log('     re-picking the current language changes nothing');
     }
-    console.log('     fetch calls: ' + (fetchCalls.length ? fetchCalls.join(', ') : '(none)'));
-    process.exit(failed ? 1 : 0);
+    runMotionChecks();
   }, 10);
+}
+
+// ---------------------------------------------------------------------------
+// The reduce-motion switch. The body attribute is what the stylesheet reads,
+// so getting it wrong means the switch looks right and the app still moves.
+// The firing loop above already clicked it once, so this checks the state
+// that click produced rather than starting from scratch.
+// ---------------------------------------------------------------------------
+function runMotionChecks() {
+  const button = elements.get('reduce-motion');
+  const label = elements.get('reduce-motion-state');
+  const body = documentStub.body.__attributes;
+
+  const flips = body['data-reduce-motion'];
+  if (flips !== 'true' && flips !== 'false') {
+    failed = true;
+    console.log(`FAIL data-reduce-motion is "${flips}" after clicking the switch`);
+  } else {
+    console.log(`     clicking the switch set data-reduce-motion="${flips}"`);
+  }
+
+  if (button.getAttribute('aria-checked') !== flips) {
+    failed = true;
+    console.log(`FAIL the switch says aria-checked="${button.getAttribute('aria-checked')}" ` +
+                `but the page is set to "${flips}"`);
+  } else {
+    console.log('     the switch and the page agree with each other');
+  }
+
+  if (!label.textContent || label.textContent.indexOf('switch.') === 0) {
+    failed = true;
+    console.log('FAIL the switch label is missing or shows a raw key: ' + label.textContent);
+  } else {
+    console.log('     the switch label is a translated word');
+  }
+
+  const saved = configPosts.filter((p) => 'reduce_motion' in p);
+  if (!saved.length) {
+    failed = true;
+    console.log('FAIL the motion choice was never saved');
+  } else if (typeof saved[saved.length - 1].reduce_motion !== 'boolean') {
+    failed = true;
+    console.log('FAIL reduce_motion was saved as ' +
+                JSON.stringify(saved[saved.length - 1].reduce_motion) + ' rather than true/false');
+  } else {
+    console.log('     the choice is saved as true or false, not "unset"');
+  }
+
+  console.log('     fetch calls: ' + (fetchCalls.length ? fetchCalls.join(', ') : '(none)'));
+  process.exit(failed ? 1 : 0);
 }
 
 setTimeout(() => {

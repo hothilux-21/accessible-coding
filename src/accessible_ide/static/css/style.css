@@ -924,13 +924,6 @@ body[data-contrast="high"][data-theme="pastel"] {
   border-top-color: var(--error-border);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .switch-track,
-  .switch-thumb {
-    transition: none;
-  }
-}
-
 /* ---------- Responsive ---------- */
 @media (max-width: 768px) {
   .topbar {
@@ -1013,9 +1006,31 @@ body[data-contrast="high"][data-theme="pastel"] {
 }
 
 /* ---------- Reduced motion ---------- */
+/* Motion can be turned off two ways, and they are not the same setting.
+ *
+ * prefers-reduced-motion is the reader's operating system asking on their
+ * behalf. It is honoured here, and it is honoured before any script runs,
+ * so nothing moves on the way to the first paint.
+ *
+ * The body attribute is the choice made in Settings. It is a separate
+ * switch, and it is deliberately able to say "no" to the media query: a
+ * reader whose computer is set to reduce motion system-wide may still
+ * want a hint of movement in this one app, and the reverse holds too.
+ * Until they choose, app.js leaves the attribute on "unset" and the media
+ * query has the final say.
+ */
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *,
+  *::before,
+  *::after {
     transition: none !important;
     animation: none !important;
   }
+}
+
+body[data-reduce-motion='true'] *,
+body[data-reduce-motion='true'] *::before,
+body[data-reduce-motion='true'] *::after {
+  transition: none !important;
+  animation: none !important;
 }

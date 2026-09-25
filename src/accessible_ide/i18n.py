@@ -67,6 +67,7 @@ CONFIG_LABELS = {
     "focus_mode": "focus.mode",
     "blur_intensity": "focus.fade",
     "contrast": "colours.contrast",
+    "reduce_motion": "motion.label",
     "tts_enabled": "speak.toggle",
     "tts_engine": "speak.voice",
     "tts_voice": "speak.voice",

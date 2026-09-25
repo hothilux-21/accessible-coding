@@ -89,7 +89,7 @@
     }
   </style>
 </head>
-<body data-theme="{{ config.theme }}" data-font="{{ config.font }}" data-font-size="{{ config.font_size }}" data-code-color="{{ config.code_color }}" data-line-height="{{ config.line_height }}" data-letter-spacing="{{ config.letter_spacing }}" data-focus-mode="{{ config.focus_mode }}" data-blur-intensity="{{ config.blur_intensity }}" data-contrast="{{ config.contrast }}" data-tts-voice="{{ config.tts_voice }}" data-tts-rate="{{ config.tts_rate }}" data-locale="{{ locale }}" data-direction="{{ direction }}">
+<body data-theme="{{ config.theme }}" data-font="{{ config.font }}" data-font-size="{{ config.font_size }}" data-code-color="{{ config.code_color }}" data-line-height="{{ config.line_height }}" data-letter-spacing="{{ config.letter_spacing }}" data-focus-mode="{{ config.focus_mode }}" data-blur-intensity="{{ config.blur_intensity }}" data-contrast="{{ config.contrast }}" data-tts-voice="{{ config.tts_voice }}" data-tts-rate="{{ config.tts_rate }}" data-locale="{{ locale }}" data-direction="{{ direction }}" data-reduce-motion="{% if config.reduce_motion is sameas true %}true{% elif config.reduce_motion is sameas false %}false{% else %}unset{% endif %}">
 
   <a class="skip-link" href="#editor">{{ t('app.skip_to_editor') }}</a>
 
@@ -316,6 +316,26 @@
             </div>
             <p class="field-help">{{ t('focus.fade_help') }}</p>
           </div>
+        </fieldset>
+
+        <fieldset class="settings-group">
+          <legend class="settings-legend">{{ t('group.motion') }}</legend>
+          <p class="settings-hint" id="motion-hint">{{ t('motion.hint') }}</p>
+
+          <div class="field field-inline">
+            <label for="reduce-motion">{{ t('motion.label') }}</label>
+            {# Not chosen yet shows as "off" until app.js reads the operating
+               system preference, so the switch never lies about what is
+               happening. #}
+            <button id="reduce-motion" class="btn btn-toggle {% if config.reduce_motion %}active{% endif %}"
+                    type="button" role="switch"
+                    aria-checked="{% if config.reduce_motion is sameas true %}true{% else %}false{% endif %}"
+                    aria-describedby="motion-hint">
+              <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+              <span id="reduce-motion-state" class="switch-text">{% if config.reduce_motion is sameas true %}{{ t('switch.on') }}{% else %}{{ t('switch.off') }}{% endif %}</span>
+            </button>
+          </div>
+          <p class="field-help">{{ t('motion.help') }}</p>
         </fieldset>
 
         <fieldset class="settings-group">

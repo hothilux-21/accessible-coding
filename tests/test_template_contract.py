@@ -396,5 +396,40 @@ class StaticAssetsTests(unittest.TestCase):
         self.assertIn('body[data-contrast="high"]', css)
 
 
+class ReducedMotionCssTests(unittest.TestCase):
+    """The stylesheet has to answer the switch in Settings.
+
+    If either rule below goes missing, the switch still looks right and the
+    app still moves, which is the worst kind of broken: nothing looks wrong
+    and nothing reports an error.
+    """
+
+    def setUp(self):
+        self.css = (
+            REPO_ROOT / "src" / "accessible_ide" / "static" / "css" / "style.css"
+        ).read_text(encoding="utf-8")
+
+    def test_the_body_attribute_stops_movement(self):
+        self.assertIn("body[data-reduce-motion='true']", self.css)
+        block = self.css.split("body[data-reduce-motion='true']", 1)[1]
+        block = block[: block.index("}")]
+        self.assertIn("transition: none", block)
+        self.assertIn("animation: none", block)
+
+    def test_the_operating_system_preference_is_still_honoured(self):
+        # This one works with no JavaScript at all, so nothing moves before
+        # the first paint.
+        self.assertIn("@media (prefers-reduced-motion: reduce)", self.css)
+        block = self.css.split("@media (prefers-reduced-motion: reduce)", 1)[1]
+        block = block[: block.index("}")]
+        self.assertIn("transition: none", block)
+
+    def test_pseudo_elements_are_covered_too(self):
+        # ::before and ::after are where a decorative rule usually hides,
+        # and they animate even when their element does not.
+        self.assertIn("body[data-reduce-motion='true'] *::before", self.css)
+        self.assertIn("body[data-reduce-motion='true'] *::after", self.css)
+
+
 if __name__ == "__main__":
     unittest.main()

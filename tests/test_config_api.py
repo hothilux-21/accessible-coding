@@ -354,6 +354,86 @@ class CodeColorTests(ConfigApiTestCase):
             self.assertNotIn(jargon, message)
 
 
+class ReduceMotionTests(ConfigApiTestCase):
+    """The reduce-motion switch.
+
+    Movement is the one setting with three states rather than two, because
+    "not chosen yet" has to be distinguishable from "off": until the reader
+    decides, the operating system preference decides for them.
+    """
+
+    def test_it_keeps_both_directions(self):
+        # An OS-level reduced-motion setting must not be the only way to turn
+        # movement off, and turning it off in the app must not be impossible
+        # for a reader whose computer asks for reduction everywhere else.
+        for value in (True, False):
+            with self.subTest(reduce_motion=value):
+                self.assertEqual(
+                    self.post_settings(reduce_motion=value).status_code, 200
+                )
+                self.assertIs(self.get_settings()["reduce_motion"], value)
+
+    def test_nothing_chosen_reports_unset_rather_than_off(self):
+        # None is what the page reads to decide whether to defer to the
+        # system, so it must survive as a real null, not collapse to False.
+        self.assertIsNone(self.get_settings()["reduce_motion"])
+        self.assertIsNone(routes.DEFAULT_CONFIG["reduce_motion"])
+
+    def test_the_page_marks_the_body_before_any_script_runs(self):
+        # app.js can adjust the switch, but the stylesheet has to be right
+        # from the first paint or things move before the correction lands.
+        page = self.client.get("/").data.decode("utf-8")
+        self.assertIn('data-reduce-motion="unset"', page)
+
+        self.post_settings(reduce_motion=True)
+        page = self.client.get("/").data.decode("utf-8")
+        self.assertIn('data-reduce-motion="true"', page)
+        self.assertNotIn('data-reduce-motion="unset"', page)
+
+        self.post_settings(reduce_motion=False)
+        page = self.client.get("/").data.decode("utf-8")
+        self.assertIn('data-reduce-motion="false"', page)
+
+    def test_a_text_value_is_refused_with_a_message_about_the_switch(self):
+        response = self.post_settings(reduce_motion="yes")
+        self.assertEqual(response.status_code, 400)
+        message = response.get_json()["error"]
+        # The old wording would have said this is not a setting we
+        # recognise, sending the reader hunting for a control that exists.
+        self.assertIn("Reduce motion", message)
+        self.assertIn("on or off", message)
+        self.assertNotIn("not a setting", message)
+
+    def test_the_switch_is_announced_as_a_switch(self):
+        page = self.client.get("/").data.decode("utf-8")
+        self.assertIn('id="reduce-motion"', page)
+        self.assertRegex(page, r'id="reduce-motion"[^>]*role="switch"')
+        self.assertIn('aria-describedby="motion-hint"', page)
+
+
+class WrongTypeTests(ConfigApiTestCase):
+    """A known setting sent the wrong sort of value."""
+
+    def test_a_non_bool_for_a_switch_is_rejected(self):
+        for value in ("yes", 1, 0, None, [], {}):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    self.post_settings(tts_enabled=value).status_code, 400,
+                    f"tts_enabled={value!r} was accepted",
+                )
+                self.assertEqual(
+                    self.post_settings(reduce_motion=value).status_code, 400,
+                    f"reduce_motion={value!r} was accepted",
+                )
+
+    def test_the_message_names_the_setting_rather_than_dismissing_it(self):
+        for key in ("tts_enabled", "reduce_motion"):
+            with self.subTest(key=key):
+                message = self.post_settings(**{key: "maybe"}).get_json()["error"]
+                self.assertNotIn("not a setting we recognise", message)
+                self.assertIn("on or off", message)
+
+
 class ThemeApiTests(ConfigApiTestCase):
     def test_themes_endpoint_serves_the_editor_palettes(self):
         # app.js builds the CodeMirror theme from this response, so the
