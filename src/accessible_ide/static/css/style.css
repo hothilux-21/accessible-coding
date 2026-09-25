@@ -15,77 +15,97 @@
   --error-bg: #2b0a0a;
   --error-border: #ff6b6b;
   --error-fg: #ffb3b3;
+  --error-line: rgba(255, 107, 107, 0.16);
   --focus-ring: #ffd93d;
   --font-family: "Atkinson Hyperlegible", sans-serif;
   --font-size: 16px;
   --line-height: 1.6;
   --letter-spacing: 0.5px;
-  --radius: 12px;
-  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-sm: 9px;
+
+  /* ---------- Spacing scale ---------- */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 40px;
+
+  /* ---------- Elevation (calm, dyslexia-friendly depth) ---------- */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.4);
+  --shadow-3: 0 10px 30px rgba(0, 0, 0, 0.5);
+  --ease: cubic-bezier(0.25, 0.6, 0.4, 1);
+  --motion-fast: 120ms;
+  --motion-med: 200ms;
 }
 
 /* ---------- Theme: High Contrast (default) ---------- */
 body[data-theme="high-contrast"] {
-  --bg: #0d0d0d;
+  --bg: #0b0b0b;
   --fg: #ffffff;
   --accent: #ffd93d;
-  --accent-fg: #0d0d0d;
-  --panel-bg: #1a1a1a;
-  --panel-border: #444444;
-  --muted: #cccccc;
-  --error-bg: #2b0a0a;
+  --accent-fg: #0b0b0b;
+  --panel-bg: #161616;
+  --panel-border: #3c3c3c;
+  --muted: #c9c9c9;
+  --error-bg: #2a0d0d;
   --error-border: #ff6b6b;
-  --error-fg: #ffb3b3;
+  --error-fg: #ffc1c1;
+  --error-line: rgba(255, 107, 107, 0.20);
   --focus-ring: #ffd93d;
 }
 
 /* ---------- Theme: Dark ---------- */
 body[data-theme="dark"] {
-  --bg: #1e1e1e;
-  --fg: #d4d4d4;
-  --accent: #569cd6;
-  --accent-fg: #ffffff;
-  --panel-bg: #252526;
-  --panel-border: #3c3c3c;
-  --muted: #858585;
-  --error-bg: #2d1a1a;
+  --bg: #17181c;
+  --fg: #e6e6e6;
+  --accent: #6bc1ff;
+  --accent-fg: #0b1e2e;
+  --panel-bg: #1f2126;
+  --panel-border: #34373f;
+  --muted: #9aa3ad;
+  --error-bg: #2d1717;
   --error-border: #f48771;
-  --error-fg: #f48771;
-  --focus-ring: #569cd6;
+  --error-fg: #ffb4a0;
+  --error-line: rgba(244, 135, 113, 0.18);
+  --focus-ring: #6bc1ff;
 }
 
 /* ---------- Theme: Pastel ---------- */
 body[data-theme="pastel"] {
-  --bg: #fdf6e3;
-  --fg: #586e75;
-  --accent: #cb4b16;
-  --accent-fg: #ffffff;
-  --panel-bg: #eee8d5;
-  --panel-border: #d5cba8;
-  --muted: #93a1a1;
-  --error-bg: #fbe3e3;
-  --error-border: #cb4b16;
-  --error-fg: #a03d10;
-  --focus-ring: #cb4b16;
+  --bg: #fbf6ec;
+  --fg: #453f3a;
+  /* Warm bronze accent. The foreground is deep brown, not white:
+     white on this accent only reaches 3.61:1 and fails WCAG AA. */
+  --accent: #b07d2c;
+  --accent-fg: #241804;
+  --panel-bg: #f2ecdf;
+  --panel-border: #d9cfb8;
+  /* Darkened from #7d7468 (4.27:1) to clear 4.5:1 on both bg and panel. */
+  --muted: #736a5f;
+  --error-bg: #fbe9e9;
+  --error-border: #c0523f;
+  --error-fg: #8f2f1a;
+  --error-line: rgba(192, 82, 63, 0.14);
+  --focus-ring: #b07d2c;
 }
 
 /* ---------- Theme: Light ---------- */
 body[data-theme="light"] {
-  --bg: #ffffff;
-  --fg: #333333;
+  --bg: #fcfcfc;
+  --fg: #2b2b2b;
   --accent: #0057b8;
   --accent-fg: #ffffff;
-  --panel-bg: #f5f5f5;
-  --panel-border: #dddddd;
-  --muted: #666666;
+  --panel-bg: #f2f2f2;
+  --panel-border: #d9d9d9;
+  --muted: #5f5f5f;
   --error-bg: #fdeaea;
   --error-border: #cc0000;
-  --error-fg: #990000;
+  --error-fg: #8f1a1a;
+  --error-line: rgba(204, 0, 0, 0.12);
   --focus-ring: #0057b8;
 }
 
@@ -154,6 +174,7 @@ body {
   padding: var(--space-3) var(--space-4);
   background: var(--panel-bg);
   border-bottom: 1px solid var(--panel-border);
+  box-shadow: var(--shadow-1);
 }
 
 .brand {
@@ -172,6 +193,7 @@ body {
   border-radius: var(--radius-sm);
   font-size: 1.2em;
   flex-shrink: 0;
+  box-shadow: var(--shadow-1);
 }
 
 .brand-name {
@@ -238,7 +260,7 @@ body {
 }
 
 input[type="range"] {
-  width: 100px;
+  width: 120px;
   accent-color: var(--accent);
   cursor: pointer;
 }
@@ -253,19 +275,28 @@ input[type="range"] {
   border-radius: var(--radius-sm);
   cursor: pointer;
   min-height: 40px;
-  transition: transform 0.1s ease, background 0.2s ease, border-color 0.2s ease;
+  box-shadow: var(--shadow-1);
+  /* Press feedback is a settle, not a bounce: dyslexia users rely on
+     steady, predictable chrome, so we translate rather than scale. */
+  transition: transform var(--motion-fast) var(--ease),
+              background var(--motion-med) var(--ease),
+              border-color var(--motion-med) var(--ease),
+              box-shadow var(--motion-med) var(--ease);
 }
 
-.btn:active { transform: scale(0.97); }
+.btn:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
 
 .btn-primary {
   background: var(--accent);
   color: var(--accent-fg);
-  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-2);
 }
 
 .btn-primary:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.08);
 }
 
 .btn-toggle {
@@ -276,9 +307,11 @@ input[type="range"] {
 
 .btn-toggle:hover {
   border-color: var(--accent);
+  color: var(--accent);
 }
 
-.btn-toggle.active {
+.btn-toggle.active,
+.btn-toggle.active:hover {
   background: var(--accent);
   color: var(--accent-fg);
   border-color: var(--accent);
@@ -346,10 +379,17 @@ input[type="range"] {
   color: var(--muted);
 }
 
-/* Focus mode: hide gutter */
-body[data-focus-mode="gutter"] .CodeMirror-gutters {
-  display: none;
+/* CodeMirror's vendor stylesheet hardcodes the active line to a pale
+   blue (#e8f2ff), which glares on the dark themes. Tie it to the
+   panel color so the caret line reads as a calm surface instead. */
+.CodeMirror-activeline-background {
+  background: var(--panel-bg);
 }
+
+/* Focus mode: hide gutter is handled natively in app.js via
+   CodeMirror's lineNumbers option, NOT with CSS display:none.
+   Hiding the gutter with CSS leaves CodeMirror's internal width
+   math stale, which makes the line numbers ghost over the code. */
 
 /* Focus mode: blur non-active lines */
 body[data-focus-mode="lines"] .CodeMirror-line:not(.CodeMirror-activeline-background) {
@@ -369,6 +409,7 @@ body[data-focus-mode="lines"] .CodeMirror-line.CodeMirror-activeline-background 
   display: flex;
   flex-direction: column;
   min-height: 140px;
+  box-shadow: inset 0 1px 0 var(--panel-border);
 }
 
 .output-header {
@@ -408,6 +449,7 @@ body[data-focus-mode="lines"] .CodeMirror-line.CodeMirror-activeline-background 
   border: 2px solid var(--error-border);
   border-radius: var(--radius-sm);
   color: var(--error-fg);
+  box-shadow: var(--shadow-1);
 }
 
 .error-title {
@@ -424,9 +466,10 @@ body[data-focus-mode="lines"] .CodeMirror-line.CodeMirror-activeline-background 
   letter-spacing: normal;
 }
 
-/* Error line highlight in the editor */
+/* Error line highlight in the editor. The tint is themed rather than a
+   fixed salmon so it stays quiet on light themes and visible on dark. */
 .cm-error-line {
-  background: rgba(255, 107, 107, 0.25) !important;
+  background: var(--error-line) !important;
   box-shadow: inset 3px 0 0 var(--error-border);
 }
 
@@ -443,10 +486,25 @@ body[data-focus-mode="lines"] .CodeMirror-line.CodeMirror-activeline-background 
 
 .footer a {
   color: var(--accent);
+  /* Always underlined: links must not rely on color alone to be
+     distinguishable (WCAG 1.4.1 Use of Color). */
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.footer a:hover {
+  text-decoration-thickness: 2px;
 }
 
 .quit-btn {
   margin-top: var(--space-2);
+}
+
+/* Text selection uses the accent at low strength so selected code stays
+   legible instead of flipping to a high-glare block of color. */
+::selection {
+  background: var(--accent);
+  color: var(--accent-fg);
 }
 
 /* ---------- Responsive ---------- */
@@ -469,6 +527,65 @@ body[data-focus-mode="lines"] .CodeMirror-line.CodeMirror-activeline-background 
   .output-pane {
     max-height: 45%;
   }
+}
+
+/* ============================================================
+   POLISH - calm depth and crafted control states.
+   These selectors already have a home block above, so only the
+   genuinely new component states live here. Dyslexia-first: clear
+   targets, steady press states, no flashy motion
+   (respects prefers-reduced-motion).
+   ============================================================ */
+
+/* ---------- Toolbar controls: bigger, calmer, clearer states ---------- */
+.tool-select,
+.tool-group select {
+  font-family: inherit;
+  font-size: 0.98em;
+  padding: var(--space-2) var(--space-3);
+  border: 2px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+  min-height: 44px;
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+
+.tool-select:hover,
+.tool-group select:hover {
+  border-color: var(--accent);
+}
+
+.tool-select:focus-visible,
+.tool-group select:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--focus-ring);
+}
+
+/* ---------- Scrollbars: visible, dyslexia-friendly, calm ---------- */
+::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--panel-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--panel-border);
+  border-radius: 999px;
+  border: 3px solid var(--panel-bg);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--panel-border) var(--panel-bg);
 }
 
 /* ---------- Reduced motion ---------- */
