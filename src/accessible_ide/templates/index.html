@@ -7,30 +7,68 @@
   <meta name="description" content="A fully accessible IDE for dyslexic and neurodivergent learners.">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/codemirror.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <!-- The two default fonts are preloaded so the first screen is drawn in
+       the right font rather than swapping to a fallback. -->
+  <link rel="preload" as="font" type="font/ttf" crossorigin
+        href="{{ url_for('main.serve_font', filename='AtkinsonHyperlegible-Regular.ttf') }}">
+  <link rel="preload" as="font" type="font/ttf" crossorigin
+        href="{{ url_for('main.serve_font', filename='OpenDyslexic3-Regular.ttf') }}">
   <style>
     @font-face {
       font-family: 'OpenDyslexic3';
-      src: url('{{ url_for('main.serve_font', filename='OpenDyslexic3-Regular.otf') }}') format('opentype');
+      src: url('{{ url_for('main.serve_font', filename='OpenDyslexic3-Regular.ttf') }}') format('truetype');
       font-weight: normal;
+      font-style: normal;
+      font-display: swap;
     }
     @font-face {
       font-family: 'OpenDyslexic3';
-      src: url('{{ url_for('main.serve_font', filename='OpenDyslexic3-Bold.otf') }}') format('opentype');
+      src: url('{{ url_for('main.serve_font', filename='OpenDyslexic3-Bold.ttf') }}') format('truetype');
       font-weight: bold;
+      font-style: normal;
+      font-display: swap;
     }
     @font-face {
       font-family: 'Atkinson Hyperlegible';
       src: url('{{ url_for('main.serve_font', filename='AtkinsonHyperlegible-Regular.ttf') }}') format('truetype');
       font-weight: normal;
+      font-display: swap;
     }
     @font-face {
       font-family: 'Atkinson Hyperlegible';
       src: url('{{ url_for('main.serve_font', filename='AtkinsonHyperlegible-Bold.ttf') }}') format('truetype');
       font-weight: bold;
+      font-display: swap;
+    }
+    <!-- Variable fonts. Declaring the whole weight range stops the
+         browser from faking bold, and lets the editor use any weight. -->
+    @font-face {
+      font-family: 'Lexend';
+      src: url('{{ url_for('main.serve_font', filename='Lexend-Variable.ttf') }}') format('truetype');
+      font-weight: 100 900;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Nunito';
+      src: url('{{ url_for('main.serve_font', filename='Nunito-Variable.ttf') }}') format('truetype');
+      font-weight: 100 900;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Almarai';
+      src: url('{{ url_for('main.serve_font', filename='Almarai-Regular.ttf') }}') format('truetype');
+      font-weight: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Almarai';
+      src: url('{{ url_for('main.serve_font', filename='Almarai-Bold.ttf') }}') format('truetype');
+      font-weight: bold;
+      font-display: swap;
     }
   </style>
 </head>
-<body data-theme="{{ config.theme }}" data-font="{{ config.font }}" data-font-size="{{ config.font_size }}" data-line-height="{{ config.line_height }}" data-letter-spacing="{{ config.letter_spacing }}" data-focus-mode="{{ config.focus_mode }}" data-blur-intensity="{{ config.blur_intensity }}" data-contrast="{{ config.contrast }}" data-tts-voice="{{ config.tts_voice }}" data-tts-rate="{{ config.tts_rate }}">
+<body data-theme="{{ config.theme }}" data-font="{{ config.font }}" data-font-size="{{ config.font_size }}" data-code-color="{{ config.code_color }}" data-line-height="{{ config.line_height }}" data-letter-spacing="{{ config.letter_spacing }}" data-focus-mode="{{ config.focus_mode }}" data-blur-intensity="{{ config.blur_intensity }}" data-contrast="{{ config.contrast }}" data-tts-voice="{{ config.tts_voice }}" data-tts-rate="{{ config.tts_rate }}">
 
   <a class="skip-link" href="#editor">Skip to editor</a>
 
@@ -115,9 +153,13 @@
             <label for="font-select">Font</label>
             <select id="font-select" aria-describedby="reading-hint">
               {% for key, font in fonts.items() %}
-              <option value="{{ key }}" {% if config.font == key %}selected{% endif %}>{{ font.name }}</option>
+              <option value="{{ key }}"
+                      data-family="{{ font.family }}"
+                      data-bundled="{{ 'true' if font.bundled else 'false' }}"
+                      {% if config.font == key %}selected{% endif %}>{{ font.name }}</option>
               {% endfor %}
             </select>
+            <p class="field-help" id="font-bundled-note" hidden></p>
           </div>
 
           <div class="field">
@@ -162,6 +204,61 @@
               <option value="high" {% if config.contrast == 'high' %}selected{% endif %}>Extra high</option>
             </select>
             <p class="field-help" id="contrast-help">Extra high pushes the text and the background further apart. Try it if words blend together.</p>
+          </div>
+        </fieldset>
+
+        <fieldset class="settings-group">
+          <legend class="settings-legend">Try it out</legend>
+          <p class="settings-hint" id="test-hint">See how your font and colour look before you keep them. Everything here is saved straight away.</p>
+
+          <div class="field">
+            <label for="sample-text">Words to try</label>
+            <input type="text" id="sample-text" value="The quick brown fox jumps over the lazy dog."
+                   autocomplete="off" spellcheck="false" aria-describedby="test-hint">
+            <p class="field-help">Change the words to anything you like. The preview below follows along.</p>
+          </div>
+
+          <div class="preview-block">
+            <p class="preview-label" id="preview-label">Preview</p>
+            <p class="font-preview" id="font-preview" aria-labelledby="preview-label" aria-describedby="preview-status">
+              <span id="font-preview-text">The quick brown fox jumps over the lazy dog.</span>
+            </p>
+            <p class="preview-status" id="preview-status">Using Atkinson Hyperlegible in the theme colour.</p>
+          </div>
+
+          <div class="field">
+            <span class="field-label" id="swatch-label">Code text colour</span>
+            <div class="swatches" id="swatches" role="radiogroup" aria-labelledby="swatch-label">
+              {% for value in ['#ffd93d', '#93e6a8', '#8ad4e8', '#8fc0f5', '#c9a8f0', '#ff9a9a', '#e3c583', '#b4b4b4', '#ffffff', '#000000'] %}
+              <label class="swatch">
+                <input type="radio" name="colour-swatch" value="{{ value }}">
+                <span class="swatch-chip" style="background: {{ value }}" aria-hidden="true"></span>
+                <span class="swatch-name">{{ value }}</span>
+              </label>
+              {% endfor %}
+            </div>
+            <p class="field-help">Pick a square, or type any colour code below.</p>
+          </div>
+
+          <div class="field">
+            <label for="code-color-hex">Colour code</label>
+            <div class="field-row">
+              <input type="color" id="code-color-picker" value="{{ config.code_color or '#ffffff' }}"
+                     aria-label="Pick a colour with the colour picker">
+              <input type="text" id="code-color-hex" class="hex-input" spellcheck="false" autocomplete="off"
+                     inputmode="text" maxlength="7" placeholder="#ffd93d"
+                     value="{{ config.code_color }}"
+                     aria-describedby="colour-help colour-error">
+            </div>
+            <p class="field-help" id="colour-help">
+              Starts with a #, then 3 or 6 letters or digits, like #ffd93d. Leave it empty to go back to the theme colour.
+            </p>
+            <p class="field-error" id="colour-error" role="alert" hidden></p>
+          </div>
+
+          <div class="field">
+            <button id="btn-reset-colour" class="btn btn-small" type="button">Use theme colour</button>
+            <p class="field-help">If a colour would be hard to read on your theme, the app nudges it until it is easy to read again.</p>
           </div>
         </fieldset>
 

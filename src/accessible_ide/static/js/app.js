@@ -41,6 +41,16 @@
   var btnSettingsClose = document.getElementById('btn-settings-close');
   var settingsStatus = document.getElementById('settings-status');
   var btnQuit = document.getElementById('btn-quit');
+  var fontBundledNote = document.getElementById('font-bundled-note');
+  var sampleText = document.getElementById('sample-text');
+  var fontPreview = document.getElementById('font-preview');
+  var fontPreviewText = document.getElementById('font-preview-text');
+  var previewStatus = document.getElementById('preview-status');
+  var swatches = document.getElementById('swatches');
+  var codeColorHex = document.getElementById('code-color-hex');
+  var codeColorPicker = document.getElementById('code-color-picker');
+  var colourError = document.getElementById('colour-error');
+  var btnResetColour = document.getElementById('btn-reset-colour');
 
   var body = document.body;
   var ttsEnabled = btnTts.getAttribute('aria-checked') === 'true';
@@ -157,12 +167,25 @@
     }
   };
 
+  // The user's own colour for code text. Empty means "use the theme".
+  // Only the base text colour is overridden: the syntax colours stay as
+  // the theme set them, because those are contrast-checked on the server
+  // and a reader who needs the structure of highlighted code should keep
+  // it.
+  var customCodeColor = '';
+
+  function codeTextColor(palette) {
+    if (!customCodeColor) return contrastAdjust(palette.fg);
+    return contrastAdjust(
+      ensureReadable(customCodeColor, palette.bg, 4.5));
+  }
+
   function applyTheme(themeKey) {
     var c = themePalette[themeKey] || themePalette;
     if (!c.bg) return;
     CodeMirror.defineStyle('accessible-theme', {
       'background': c.bg,
-      'color': contrastAdjust(c.fg),
+      'color': codeTextColor(c),
       'gutters': { 'background-color': c.gutter_bg, 'color': c.gutter_fg, 'border': 'none' },
       'gutter': { 'background-color': c.gutter_bg, 'color': c.gutter_fg },
       'cursor': { 'border-left': '2px solid ' + c.cursor },
@@ -183,18 +206,96 @@
       'meta': { 'color': contrastAdjust(c.comment) }
     });
     editor.setOption('theme', 'accessible-theme');
+    updatePreview();
   }
 
   // ---------- Fonts ----------
-  var FONT_FAMILIES = {
-    'OpenDyslexic': '"OpenDyslexic3", "OpenDyslexic", cursive',
-    'Atkinson Hyperlegible': '"Atkinson Hyperlegible", sans-serif',
-    'Comic Sans MS': '"Comic Sans MS", cursive',
-    'Courier New': '"Courier New", monospace'
-  };
+  // The font stacks live in routes.py and arrive here on each <option>
+  // as data-family, so there is only ever one copy of them. An earlier
+  // version kept a second list in this file, which is how OpenDyslexic
+  // could be listed but not actually load.
+  var DEFAULT_FONT_FAMILY = '"Atkinson Hyperlegible", sans-serif';
+
+  function fontFamilyFor(fontKey) {
+    var option = fontSelect && fontSelect.querySelector(
+      'option[value="' + (fontKey || '').replace(/"/g, '') + '"]');
+    var family = option && option.getAttribute('data-family');
+    return family || DEFAULT_FONT_FAMILY;
+  }
+
+  // ---------- Colour ----------
+  // The user can pick any colour for their code. That is a genuine
+  // accessibility risk: a pale yellow on a light theme, or near-black on
+  // a dark one, is unreadable. Rather than block the choice, the colour
+  // is moved - along the lightness axis only, so the hue the user chose
+  // is preserved - until it clears WCAG AA (4.5:1) against the theme it
+  // is being used on. Contrast-mode remapping still applies on top.
+  function hexToRgb(hex) {
+    var value = String(hex || '').replace('#', '').trim();
+    if (value.length === 3) {
+      value = value[0] + value[0] + value[1] + value[1] + value[2] + value[2];
+    }
+    if (!/^[0-9a-fA-F]{6}$/.test(value)) return null;
+    return {
+      r: parseInt(value.slice(0, 2), 16),
+      g: parseInt(value.slice(2, 4), 16),
+      b: parseInt(value.slice(4, 6), 16)
+    };
+  }
+
+  function relativeLuminance(rgb) {
+    var channels = [rgb.r, rgb.g, rgb.b].map(function (channel) {
+      var part = channel / 255;
+      return part <= 0.03928 ? part / 12.92
+        : Math.pow((part + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  }
+
+  function contrastRatio(first, second) {
+    var a = relativeLuminance(first);
+    var b = relativeLuminance(second);
+    var lighter = Math.max(a, b);
+    var darker = Math.min(a, b);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  function rgbToHex(rgb) {
+    return '#' + [rgb.r, rgb.g, rgb.b].map(function (channel) {
+      return ('0' + Math.max(0, Math.min(255, Math.round(channel)))
+        .toString(16)).slice(-2);
+    }).join('');
+  }
+
+  function ensureReadable(hex, backgroundHex, minimum) {
+    var target = minimum || 4.5;
+    var rgb = hexToRgb(hex);
+    var bg = hexToRgb(backgroundHex);
+    if (!rgb || !bg) return hex;
+    if (contrastRatio(rgb, bg) >= target) return rgbToHex(rgb);
+
+    // Move away from the background, whichever end is closer, so the
+    // user's hue is kept and only the brightness changes.
+    var backgroundIsDark = relativeLuminance(bg) < 0.5;
+    var step = backgroundIsDark ? 12 : -12;
+    var moved = { r: rgb.r, g: rgb.g, b: rgb.b };
+    for (var i = 0; i < 40; i++) {
+      moved = {
+        r: moved.r + step,
+        g: moved.g + step,
+        b: moved.b + step
+      };
+      if (moved.r < 0 || moved.r > 255 || moved.g < 0 || moved.g > 255
+          || moved.b < 0 || moved.b > 255) {
+        break;
+      }
+      if (contrastRatio(moved, bg) >= target) return rgbToHex(moved);
+    }
+    return backgroundIsDark ? '#ffffff' : '#000000';
+  }
 
   function applyFont(fontKey) {
-    var family = FONT_FAMILIES[fontKey] || FONT_FAMILIES['Atkinson Hyperlegible'];
+    var family = fontFamilyFor(fontKey);
     body.style.fontFamily = family;
     editorEl.style.fontFamily = family;
     // CodeMirror needs the font applied to its content
@@ -203,6 +304,7 @@
     // Font metrics changed - recalculate the gutter width so line
     // numbers never overlap the code.
     editor.refresh();
+    updatePreview();
   }
 
   function applyFontSize(size) {
@@ -212,6 +314,7 @@
     if (cm) cm.style.fontSize = size + 'px';
     fontSizeLabel.textContent = size + 'px';
     editor.refresh();
+    updatePreview();
   }
 
   // These three were stored in the config and rendered onto <body>, but
@@ -547,8 +650,154 @@
   fontSelect.addEventListener('change', function () {
     applyFont(fontSelect.value);
     body.setAttribute('data-font', fontSelect.value);
+    updateFontNote();
+    updatePreview();
     saveConfig({ font: fontSelect.value });
   });
+
+  // ---------- Try it out panel ----------
+  // Fonts taken from the computer are not guaranteed to exist on every
+  // machine, so the panel says which one is in use rather than leaving
+  // the reader to wonder why Arial looks like Liberation Sans.
+  function updateFontNote() {
+    if (!fontBundledNote || !fontSelect) return;
+    var option = fontSelect.options[fontSelect.selectedIndex];
+    var bundled = option && option.getAttribute('data-bundled') === 'true';
+    var note = option ? option.textContent : '';
+    fontBundledNote.textContent = bundled
+      ? note + ' is included with the app.'
+      : note + ' comes from your computer. If it does not show, an ' +
+        'included font will be used instead.';
+    fontBundledNote.hidden = false;
+  }
+
+  function updatePreview() {
+    if (!fontPreview) return;
+    var palette = themePalette[themeSelect.value] || themePalette;
+    var shown = codeTextColor(palette);
+    var option = fontSelect.options[fontSelect.selectedIndex];
+    var name = option ? option.textContent : 'your font';
+    var sample = sampleText && sampleText.value ? sampleText.value : ' ';
+
+    fontPreview.style.fontFamily = fontFamilyFor(fontSelect.value);
+    fontPreview.style.fontSize = fontSize.value + 'px';
+    // The preview uses the editor's own background and the same resolved
+    // text colour, so it cannot drift from what the editor will show.
+    if (palette.bg) fontPreview.style.backgroundColor = palette.bg;
+    fontPreview.style.color = shown;
+
+    if (fontPreviewText) fontPreviewText.textContent = sample;
+
+    if (previewStatus) {
+      var where = customCodeColor ? 'in ' + customCodeColor : 'in the theme colour';
+      var nudged = customCodeColor
+        && shown.toLowerCase() !== customCodeColor.toLowerCase();
+      previewStatus.textContent = 'Showing ' + name + ' ' + where + '.'
+        + (nudged
+          ? ' On this theme it was lightened or darkened to ' + shown +
+            ' so it stays easy to read.'
+          : '');
+    }
+  }
+
+  function setCodeColor(hex, persist) {
+    customCodeColor = hex || '';
+    body.setAttribute('data-code-color', customCodeColor);
+    applyTheme(themeSelect.value);
+    updatePreview();
+    if (persist) saveConfig({ code_color: customCodeColor });
+  }
+
+  function showColourError(message) {
+    if (!colourError) return;
+    colourError.textContent = message || '';
+    colourError.hidden = !message;
+    if (codeColorHex) {
+      codeColorHex.setAttribute('aria-invalid', message ? 'true' : 'false');
+    }
+  }
+
+  // Applied on every keystroke so the preview is instant. An unfinished
+  // colour is simply not applied and is never nagged about mid-typing -
+  // a red error box appearing after the first keystroke of "#ffd93d" is
+  // discouraging, and the reader cannot have made a mistake they have not
+  // finished expressing. The complaint waits until they leave the field.
+  function onHexInput() {
+    var value = (codeColorHex.value || '').trim();
+    if (value === '') {
+      showColourError('');
+      setCodeColor('', false);
+      return;
+    }
+    if (!/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value)) return;
+    showColourError('');
+    if (codeColorPicker) codeColorPicker.value = expandHex(value);
+    setCodeColor(value, false);
+  }
+
+  function expandHex(value) {
+    return value.length === 7
+      ? value
+      : '#' + value[1] + value[1] + value[2] + value[2] + value[3] + value[3];
+  }
+
+  if (swatches) {
+    swatches.addEventListener('change', function (event) {
+      if (event.target.name !== 'colour-swatch') return;
+      if (codeColorHex) codeColorHex.value = event.target.value;
+      showColourError('');
+      setCodeColor(event.target.value, true);
+    });
+  }
+
+  if (codeColorHex) {
+    codeColorHex.addEventListener('input', onHexInput);
+    codeColorHex.addEventListener('change', function () {
+      var value = (codeColorHex.value || '').trim();
+      if (/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value)) {
+        showColourError('');
+        setCodeColor(value, true);
+      } else if (value === '') {
+        showColourError('');
+        setCodeColor('', true);
+      } else {
+        showColourError('That is not a colour. Use # followed by 3 or 6 '
+          + 'letters or digits, like #ffd93d.');
+      }
+    });
+  }
+
+  if (codeColorPicker) {
+    codeColorPicker.addEventListener('input', function () {
+      if (codeColorHex) codeColorHex.value = codeColorPicker.value;
+      showColourError('');
+      setCodeColor(codeColorPicker.value, false);
+    });
+    codeColorPicker.addEventListener('change', function () {
+      if (codeColorHex) codeColorHex.value = codeColorPicker.value;
+      showColourError('');
+      setCodeColor(codeColorPicker.value, true);
+    });
+  }
+
+  if (btnResetColour) {
+    btnResetColour.addEventListener('click', function () {
+      if (codeColorHex) codeColorHex.value = '';
+      var radios = swatches
+        ? swatches.querySelectorAll('input[name="colour-swatch"]')
+        : [];
+      Array.prototype.forEach.call(radios, function (radio) {
+        radio.checked = false;
+      });
+      showColourError('');
+      setCodeColor('', true);
+      if (codeColorHex) codeColorHex.focus();
+    });
+  }
+
+  if (sampleText) {
+    sampleText.addEventListener('input', updatePreview);
+  }
 
   fontSize.addEventListener('input', function () {
     applyFontSize(parseInt(fontSize.value, 10));
@@ -658,6 +907,9 @@
   // ---------- Init ----------
   contrastMode = contrastSelect.value || 'normal';
   applyContrast(contrastMode);
+  // A saved colour has to be in place before the theme is built, or the
+  // editor would paint in the old colour for a frame.
+  customCodeColor = body.getAttribute('data-code-color') || '';
   applyTheme(body.getAttribute('data-theme') || 'high-contrast');
   applyFont(body.getAttribute('data-font') || 'Atkinson Hyperlegible');
   applyFontSize(parseInt(body.getAttribute('data-font-size') || '16', 10));
@@ -666,6 +918,18 @@
   applyBlurIntensity(body.getAttribute('data-blur-intensity') || '0.5');
   applyFocusMode(body.getAttribute('data-focus-mode') || 'off');
   syncBlurField();
+  updateFontNote();
+  updatePreview();
+
+  // The swatch matching a saved colour is ticked on load, so the panel
+  // does not contradict the colour actually in use.
+  if (customCodeColor && swatches) {
+    var saved = customCodeColor.toLowerCase();
+    var radios = swatches.querySelectorAll('input[name="colour-swatch"]');
+    Array.prototype.forEach.call(radios, function (radio) {
+      if (radio.value.toLowerCase() === saved) radio.checked = true;
+    });
+  }
 
   speechRate = parseFloat(body.getAttribute('data-tts-rate') || ttsRate.value || '0.9');
   speechVoiceName = body.getAttribute('data-tts-voice') || '';

@@ -54,6 +54,17 @@ REQUIRED_SETTINGS_IDS = (
     "tts-rate",
     "tts-rate-label",
     "btn-test-voice",
+    # The "Try it out" panel.
+    "font-bundled-note",
+    "sample-text",
+    "font-preview",
+    "font-preview-text",
+    "preview-status",
+    "swatches",
+    "code-color-hex",
+    "code-color-picker",
+    "colour-error",
+    "btn-reset-colour",
 )
 
 
@@ -66,13 +77,18 @@ def render_index():
     return response.get_data(as_text=True)
 
 
-class TemplateContractTests(unittest.TestCase):
+class RenderedPageFixture(unittest.TestCase):
+    """Shared setup only. Holding no tests keeps subclasses from
+    re-running this whole file's suite."""
+
     @classmethod
     def setUpClass(cls):
         cls.html = render_index()
         cls.js = APP_JS.read_text(encoding="utf-8")
         cls.html_ids = set(re.findall(r'id="([^"]+)"', cls.html))
 
+
+class TemplateContractTests(RenderedPageFixture):
     def test_every_element_the_script_looks_up_exists(self):
         wanted = set(
             re.findall(r"getElementById\(\s*'([^']+)'\s*\)", self.js)
@@ -252,6 +268,89 @@ class TemplateContractTests(unittest.TestCase):
         self.assertIn("aria-live", self.html)
         self.assertIn("reportSaveError", self.js)
         self.assertIn("res.ok", self.js)
+
+
+class TryItOutPanelTests(RenderedPageFixture):
+    """The font-and-colour test panel."""
+
+    def test_the_panel_sits_inside_the_settings_dialog(self):
+        # Outside the dialog it would be unreachable: the dialog is modal
+        # and the rest of the page is inert while it is open.
+        dialog = self.html.split('<dialog id="settings-dialog"', 1)[1]
+        dialog = dialog.split("</dialog>", 1)[0]
+        for element_id in ("swatches", "code-color-hex", "font-preview",
+                           "btn-reset-colour", "sample-text"):
+            with self.subTest(element=element_id):
+                self.assertIn(f'id="{element_id}"', dialog)
+
+    def test_font_options_carry_their_own_css_stack(self):
+        # app.js reads data-family instead of keeping a second copy of the
+        # font stacks. Without it, a font can be listed but not applied -
+        # which is how OpenDyslexic shipped broken.
+        options = re.findall(r"<option value=\"[^\"]+\"[^>]*>", self.html)
+        font_options = [o for o in options if "data-family" in o]
+        self.assertEqual(len(font_options), len(routes.FONTS))
+        for option in font_options:
+            with self.subTest(option=option[:60]):
+                self.assertRegex(option, r'data-family="[^"]+"')
+                self.assertRegex(option, r'data-bundled="(true|false)"')
+
+    def test_the_swatches_are_a_labelled_radio_group(self):
+        # Real radios, so arrow keys, Tab and a screen reader all work
+        # without any extra scripting.
+        self.assertIn('role="radiogroup"', self.html)
+        self.assertIn('aria-labelledby="swatch-label"', self.html)
+        self.assertIn('id="swatch-label"', self.html)
+
+        radios = re.findall(r'<input type="radio" name="colour-swatch"[^>]*>', self.html)
+        self.assertGreaterEqual(len(radios), 8)
+        for radio in radios:
+            self.assertRegex(radio, r'value="#[0-9a-fA-F]{6}"')
+            # The chip carries the colour; the text below it names it, so
+            # the swatch is not identified by colour alone.
+            self.assertIn("swatch-chip", self.html)
+            self.assertIn("swatch-name", self.html)
+
+    def test_the_colour_field_explains_itself_and_reports_problems(self):
+        self.assertIn('for="code-color-hex"', self.html)
+        self.assertIn('aria-describedby="colour-help colour-error"', self.html)
+        # role="alert" is what makes a screen reader say the problem out
+        # loud rather than leaving it sitting there visually.
+        self.assertRegex(self.html, r'id="colour-error"[^>]*role="alert"')
+        # The error starts hidden; app.js reveals it.
+        self.assertRegex(self.html, r'id="colour-error"[^>]*hidden')
+
+    def test_the_preview_is_described_for_a_screen_reader(self):
+        self.assertIn('aria-labelledby="preview-label"', self.html)
+        self.assertIn('id="preview-label"', self.html)
+        self.assertIn('id="preview-status"', self.html)
+        # The default sample is the pangram, which exercises every letter.
+        self.assertIn("The quick brown fox jumps over the lazy dog", self.html)
+
+    def test_the_colour_picker_is_labelled(self):
+        # A bare colour input is announced as just "colour" by most
+        # screen readers, which is not enough to tell it apart from the
+        # hex field beside it.
+        self.assertRegex(
+            self.html, r'<input type="color"[^>]*aria-label="[^"]+"')
+
+    def test_the_colour_is_remembered_across_reloads(self):
+        # The saved colour has to reach the page on load, or a reader who
+        # picks a colour and closes the app loses it. Checked on the
+        # rendered page, where Jinja has already substituted the value.
+        body = re.search(r"<body[^>]*>", self.html)
+        self.assertIsNotNone(body)
+        assert body is not None  # narrow the type for checkers
+        self.assertIn("data-code-color=", body.group(0))
+        self.assertIn("code_color", routes.DEFAULT_CONFIG)
+        self.assertIn("code_color", routes.CONFIG_TYPES)
+
+    def test_app_js_restores_the_saved_colour_and_font(self):
+        # Both have to be read back from the page on init, or the first
+        # paint would show the theme colour and the wrong font for a frame.
+        self.assertIn("data-code-color", self.js)
+        self.assertIn("customCodeColor = body.getAttribute('data-code-color')", self.js)
+        self.assertIn("data-family", self.js)
 
 
 class StaticAssetsTests(unittest.TestCase):

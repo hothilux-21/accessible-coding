@@ -61,6 +61,9 @@ CONFIG_FILE = CONFIG_DIR / 'config.json'
 DEFAULT_CONFIG = {
     'font': 'Atkinson Hyperlegible',
     'font_size': 16,
+    # Empty means "use whatever the chosen theme says". Setting it to a
+    # hex colour overrides the theme's foreground for code text only.
+    'code_color': '',
     'line_height': 1.6,
     'letter_spacing': 0.5,
     'theme': 'high-contrast',
@@ -150,26 +153,91 @@ THEMES = {
     }
 }
 
+# Reading fonts. This table is the single source of truth: the settings
+# screen and app.js both read it from /api/fonts, so a font can never be
+# listed in one place and missing from the other. That duplication is
+# what let OpenDyslexic ship as an HTML page under a .otf name while
+# every other layer still believed the font existed.
+#
+# `family` is a CSS font stack. The browser uses the first family that
+# actually has the characters on screen, so a missing font degrades to
+# a plain sans-serif rather than to the generic `cursive`, which is
+# close to unreadable for source code.
+#
+# `files` lists the font files this app bundles, and is empty for fonts
+# taken from the computer. Calibri and Arial belong to Microsoft and
+# cannot be redistributed in an open-source project, so they are
+# referenced rather than shipped, with a free and metric-compatible
+# stand-in behind them (Carlito for Calibri, Liberation Sans for Arial).
+# Those stand-ins are not bundled either: they are named so that a user
+# who has them installed, or who has installed them once, gets a
+# sensible result instead of a broken font.
 FONTS = {
     'OpenDyslexic': {
         'name': 'OpenDyslexic',
-        'family': '"OpenDyslexic3", "OpenDyslexic", cursive',
-        'files': ['OpenDyslexic3-Regular.otf', 'OpenDyslexic3-Bold.otf']
+        'family': '"OpenDyslexic3", "OpenDyslexic", sans-serif',
+        'files': ['OpenDyslexic3-Regular.ttf', 'OpenDyslexic3-Bold.ttf'],
+        'bundled': True,
+        'note': 'Designed for readers with dyslexia.'
     },
     'Atkinson Hyperlegible': {
         'name': 'Atkinson Hyperlegible',
         'family': '"Atkinson Hyperlegible", sans-serif',
-        'files': ['AtkinsonHyperlegible-Regular.ttf', 'AtkinsonHyperlegible-Bold.ttf']
+        'files': [
+            'AtkinsonHyperlegible-Regular.ttf',
+            'AtkinsonHyperlegible-Bold.ttf',
+        ],
+        'bundled': True,
+        'note': 'Designed to be clear at small sizes and low contrast.'
+    },
+    'Lexend': {
+        'name': 'Lexend',
+        'family': '"Lexend", sans-serif',
+        'files': ['Lexend-Variable.ttf'],
+        'bundled': True,
+        'note': 'Designed for easy reading.'
+    },
+    'Nunito': {
+        'name': 'Nunito',
+        'family': '"Nunito", sans-serif',
+        'files': ['Nunito-Variable.ttf'],
+        'bundled': True,
+        'note': 'Rounded and open, which many readers find easier to track.'
+    },
+    'Almarai': {
+        'name': 'Almarai (Arabic)',
+        'family': '"Almarai", sans-serif',
+        'files': ['Almarai-Regular.ttf', 'Almarai-Bold.ttf'],
+        'bundled': True,
+        'note': 'For Arabic text.'
+    },
+    'Calibri': {
+        'name': 'Calibri',
+        'family': '"Calibri", "Carlito", "Segoe UI", sans-serif',
+        'files': [],
+        'bundled': False,
+        'note': 'From your computer. Carlito is used instead if Calibri is missing.'
+    },
+    'Arial': {
+        'name': 'Arial',
+        'family': '"Arial", "Liberation Sans", "Helvetica", sans-serif',
+        'files': [],
+        'bundled': False,
+        'note': 'From your computer. Liberation Sans is used instead if Arial is missing.'
     },
     'Comic Sans MS': {
         'name': 'Comic Sans MS',
-        'family': '"Comic Sans MS", cursive',
-        'files': []
+        'family': '"Comic Sans MS", "Comic Sans", sans-serif',
+        'files': [],
+        'bundled': False,
+        'note': 'From your computer.'
     },
     'Courier New': {
         'name': 'Courier New',
-        'family': '"Courier New", monospace',
-        'files': []
+        'family': '"Courier New", Courier, monospace',
+        'files': [],
+        'bundled': False,
+        'note': 'From your computer.'
     }
 }
 
@@ -409,6 +477,7 @@ def run_code():
 CONFIG_TYPES = {
     'font': str,
     'font_size': int,
+    'code_color': str,
     'line_height': (int, float),
     'letter_spacing': (int, float),
     'theme': str,
@@ -445,9 +514,27 @@ CONFIG_MAX_LENGTHS = {
     'tts_engine': 50,
 }
 
+# Settings that are colours. These are written straight into a style
+# attribute, so anything other than a plain hex colour is rejected
+# outright: that keeps out CSS injection (`red; background: url(...)`)
+# as well as the empty, broken and "transparent" values that would
+# quietly make the code unreadable. A hex colour is the one colour
+# format that cannot carry a second declaration.
+CONFIG_HEX_COLORS = {'code_color'}
+
+# Only the 3- and 6-digit forms. The 4- and 8-digit forms (with alpha)
+# are left out on purpose: alpha is how a colour silently becomes
+# unreadable, so it is not offered.
+HEX_COLOR_RE = re.compile(r'^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$')
+
 
 def _describe(key, value):
     """Plain-English explanation of why a setting was rejected."""
+    if key in CONFIG_HEX_COLORS:
+        return (
+            '{} must be a colour like #1a1a1a, or left empty to use the '
+            'theme colour.'.format(key.replace('_', ' '))
+        )
     if key in CONFIG_RANGES:
         low, high = CONFIG_RANGES[key]
         return '{} must be between {} and {}.'.format(
@@ -495,6 +582,14 @@ def config_api():
         if key in CONFIG_VALUES and value not in CONFIG_VALUES[key]:
             invalid.append(_describe(key, value))
             continue
+        if key in CONFIG_HEX_COLORS:
+            # An empty value is meaningful rather than missing: it means
+            # "use the theme's colour", which is exactly what the reset
+            # button sends.
+            if value and (not isinstance(value, str)
+                          or not HEX_COLOR_RE.match(value)):
+                invalid.append(_describe(key, value))
+                continue
         if key in CONFIG_RANGES:
             low, high = CONFIG_RANGES[key]
             if not (low <= value <= high):
@@ -527,9 +622,22 @@ def fonts_api():
     return jsonify(FONTS)
 
 
+# Python's mimetypes has no entry for .ttf on Windows, so fonts were
+# being served as application/octet-stream. Browsers tolerate that, but
+# a font served with a real font/* type is the correct answer and avoids
+# surprises in stricter clients and in the packaged .exe.
+FONT_MIME_TYPES = {
+    '.ttf': 'font/ttf',
+    '.otf': 'font/otf',
+    '.woff': 'font/woff',
+    '.woff2': 'font/woff2',
+}
+
+
 @main_bp.route('/assets/fonts/<path:filename>')
 def serve_font(filename):
-    return send_from_directory('assets/fonts', filename)
+    mimetype = FONT_MIME_TYPES.get(Path(filename).suffix.lower())
+    return send_from_directory('assets/fonts', filename, mimetype=mimetype)
 
 
 @main_bp.route('/health')

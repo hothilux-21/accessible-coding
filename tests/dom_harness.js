@@ -26,7 +26,16 @@ const KNOWN_IDS = new Set([
   'blur-field', 'theme-select', 'contrast-select', 'focus-mode',
   'tts-toggle', 'tts-state', 'tts-voice', 'tts-rate', 'tts-rate-label',
   'btn-test-voice',
+  'font-bundled-note', 'sample-text', 'font-preview', 'font-preview-text',
+  'preview-status', 'swatches', 'code-color-hex', 'code-color-picker',
+  'colour-error', 'btn-reset-colour',
 ]);
+
+// The swatch colours, mirroring the list rendered into the panel.
+const FONT_COLOURS = [
+  '#ffd93d', '#93e6a8', '#8ad4e8', '#8fc0f5', '#c9a8f0',
+  '#ff9a9a', '#e3c583', '#b4b4b4', '#ffffff', '#000000',
+];
 
 const numericIds = new Set([
   'font-size', 'line-height', 'letter-spacing', 'blur-intensity', 'tts-rate',
@@ -45,13 +54,14 @@ function makeClassList() {
   };
 }
 
-function makeElement(id) {
+function makeElement(id, extraAttributes = {}, extraProps = {}) {
   const attributes = {
     'aria-checked': 'true',
     'aria-pressed': 'false',
     'data-theme': 'high-contrast',
     'data-font': 'OpenDyslexic',
     'data-font-size': '16',
+    'data-code-color': '',
     'data-line-height': '1.6',
     'data-letter-spacing': '0.5',
     'data-blur-intensity': '0.5',
@@ -59,12 +69,18 @@ function makeElement(id) {
     'data-contrast': 'normal',
     'data-tts-voice': '',
     'data-tts-rate': '0.9',
+    ...extraAttributes,
   };
 
   // Listeners are recorded rather than discarded so the harness can fire
   // them afterwards. A handler that throws is the failure mode that
   // matters: it silently stops that control working.
   const listeners = {};
+
+  // style is a real object, not a swallowing proxy, so the harness can
+  // read back what the code actually set. The preview's resolved colour is
+  // the whole point of the panel, and it has to be checkable.
+  const style = { setProperty: noop, removeProperty: noop };
 
   const el = {
     id,
@@ -76,11 +92,8 @@ function makeElement(id) {
     hidden: false,
     files: [],
     className: '',
+    style,
     classList: makeClassList(),
-    style: new Proxy({ setProperty: noop, removeProperty: noop }, {
-      get: (t, k) => (k in t ? t[k] : ''),
-      set: () => true,
-    }),
     getAttribute: (name) => (name in attributes ? attributes[name] : null),
     setAttribute: (name, v) => { attributes[name] = v; },
     removeAttribute: (name) => { delete attributes[name]; },
@@ -100,11 +113,34 @@ function makeElement(id) {
     querySelector: () => makeElement('__query__'),
     querySelectorAll: () => [],
     getElementsByClassName: () => [],
+    ...extraProps,
   };
   el.__listeners = listeners;
   el.__attributes = attributes;
   return el;
 }
+
+// The font list, mirroring what routes.py renders into the <option> tags.
+// app.js reads the CSS stack from data-family rather than keeping its own
+// copy, so these attributes are what the real code depends on.
+const FONT_OPTIONS = [
+  ['Atkinson Hyperlegible', 'Atkinson Hyperlegible', 'true'],
+  ['OpenDyslexic', 'OpenDyslexic', 'true'],
+  ['Lexend', 'Lexend', 'true'],
+  ['Nunito', 'Nunito', 'true'],
+  ['Almarai', 'Almarai (Arabic)', 'true'],
+  ['Calibri', 'Calibri', 'false'],
+  ['Arial', 'Arial', 'false'],
+  ['Comic Sans MS', 'Comic Sans MS', 'false'],
+  ['Courier New', 'Courier New', 'false'],
+].map(([value, label, bundled]) => makeElement(value, {
+  'data-family': `"${value}", sans-serif`,
+  'data-bundled': bundled,
+}, { value, textContent: label }));
+
+// The font <select> needs a real option list for fontFamilyFor() and
+// updateFontNote() to work against.
+const FONT_SELECT = makeElement('font-select', {}, { options: FONT_OPTIONS });
 
 const editorInstance = {
   getValue: () => 'print("hi")',
@@ -135,6 +171,10 @@ const documentStub = {
   activeElement: null,
   getElementById: (id) => {
     lookups.push(id);
+    if (id === 'font-select') {
+      if (!elements.has('font-select')) elements.set('font-select', FONT_SELECT);
+      return FONT_SELECT;
+    }
     if (!KNOWN_IDS.has(id)) return null;
     if (!elements.has(id)) elements.set(id, makeElement(id));
     return elements.get(id);
@@ -242,6 +282,10 @@ const interactions = [
   ['btn-test-voice', 'click'],
   ['btn-settings', 'click'], ['btn-settings-close', 'click'],
   ['settings-dialog', 'cancel'],
+  ['sample-text', 'input'],
+  ['code-color-hex', 'input'], ['code-color-hex', 'change'],
+  ['code-color-picker', 'input'], ['code-color-picker', 'change'],
+  ['btn-reset-colour', 'click'],
 ];
 
 let fired = 0;
@@ -282,7 +326,158 @@ const missing = [...KNOWN_IDS].filter((id) => !lookups.includes(id));
 console.log('     looked up ' + new Set(lookups).size + ' ids; ' + missing.length +
             ' declared-but-unused in the harness' + (missing.length ? ': ' + missing.join(', ') : ''));
 
+// ---------------------------------------------------------------------------
+// The "Try it out" panel. These are the checks that matter most: the whole
+// point of letting someone choose a colour is that the code stays readable,
+// so the resolved colour is measured against the preview background rather
+// than assumed to be fine.
+//
+// This runs after a tick because the theme palette arrives from /api/themes,
+// and until it does there is no background to measure against.
+// ---------------------------------------------------------------------------
+
+function relativeLuminance(hex) {
+  const value = hex.replace('#', '');
+  const channels = [0, 2, 4].map((i) => {
+    const part = parseInt(value.slice(i, i + 2), 16) / 255;
+    return part <= 0.03928 ? part / 12.92 : Math.pow((part + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+
+function contrastRatio(first, second) {
+  const a = relativeLuminance(first);
+  const b = relativeLuminance(second);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+function fire(id, type, event = fakeEvent) {
+  const el = elements.get(id);
+  if (!el) return null;
+  for (const handler of el.__listeners[type] || []) handler(event);
+  return el;
+}
+
+function runPanelChecks() {
+  const preview = elements.get('font-preview');
+  const hexInput = elements.get('code-color-hex');
+  const errorText = elements.get('colour-error');
+  const swatchGroup = elements.get('swatches');
+  const bodyNow = documentStub.body.__attributes;
+
+  if (!preview.style.backgroundColor) {
+    failed = true;
+    console.log('FAIL the preview was never given the editor background');
+    return;
+  }
+
+  // Every swatch, and a few colours a reader might invent, must land on
+  // the preview as a colour that clears WCAG AA against that background.
+  const candidates = [...FONT_COLOURS, '#1a1a1a', '#fefefe', '#808080'];
+
+  for (const candidate of candidates) {
+    hexInput.value = candidate;
+    fire('code-color-hex', 'input');
+
+    const shown = preview.style.color;
+    const background = preview.style.backgroundColor;
+    if (!shown || !/^#[0-9a-f]{6}$/i.test(shown)) {
+      failed = true;
+      console.log(`FAIL choosing ${candidate} left the preview colour as ${shown}`);
+      continue;
+    }
+    const ratio = contrastRatio(shown, background);
+    if (ratio < 4.5) {
+      failed = true;
+      console.log(`FAIL ${candidate} resolved to ${shown} on ${background}, ` +
+                  `which is only ${ratio.toFixed(2)}:1`);
+    }
+    if (bodyNow['data-code-color'] !== candidate) {
+      failed = true;
+      console.log(`FAIL ${candidate} was not recorded on the body`);
+    }
+  }
+  console.log(`     all ${candidates.length} chosen colours clear 4.5:1 on the preview background`);
+
+  // A half-typed colour must not be nagged about, and must not be stored.
+  // Typing "#ff" on the way to "#ffd93d" is normal, and an error box
+  // appearing on the first keystroke would be discouraging.
+  hexInput.value = '#ff';
+  fire('code-color-hex', 'input');
+  if (errorText.hidden !== true) {
+    failed = true;
+    console.log('FAIL a part-typed colour showed an error while the reader was still typing');
+  }
+
+  hexInput.value = 'nonsense';
+  fire('code-color-hex', 'input');
+  if (errorText.hidden !== true) {
+    failed = true;
+    console.log('FAIL nonsense nagged the reader mid-typing');
+  }
+  console.log('     part-typed colours are left alone, with no error shown');
+
+  // Leaving the field is where a real mistake is reported - and refused.
+  fire('code-color-hex', 'change');
+  if (errorText.hidden !== false || !errorText.textContent) {
+    failed = true;
+    console.log('FAIL leaving the field with nonsense did not explain the problem');
+  }
+  if (bodyNow['data-code-color'] === 'nonsense') {
+    failed = true;
+    console.log('FAIL nonsense was saved to the config');
+  }
+
+  hexInput.value = 'red';
+  fire('code-color-hex', 'change');
+  if (bodyNow['data-code-color'] === 'red') {
+    failed = true;
+    console.log('FAIL a named colour was saved to the config');
+  }
+  console.log('     a colour that is not a hex code is explained, and never saved');
+
+  // A swatch click records the colour and clears the error.
+  hexInput.value = '';
+  swatchGroup.__listeners.change.forEach((handler) =>
+    handler({ target: { name: 'colour-swatch', value: '#8fc0f5' } }));
+  if (bodyNow['data-code-color'] !== '#8fc0f5') {
+    failed = true;
+    console.log(`FAIL swatch click saved ${bodyNow['data-code-color']} instead of #8fc0f5`);
+  }
+  if (errorText.hidden !== true) {
+    failed = true;
+    console.log('FAIL picking a swatch did not clear the earlier error');
+  }
+  console.log('     swatches record the colour and clear the error');
+
+  // The sample text the reader typed is what the preview shows.
+  const sample = elements.get('sample-text');
+  sample.value = 'Pack my box with five dozen liquor jugs';
+  fire('sample-text', 'input');
+  const previewText = elements.get('font-preview-text');
+  if (previewText.textContent !== sample.value) {
+    failed = true;
+    console.log(`FAIL the preview shows "${previewText.textContent}" ` +
+                `instead of the typed sample`);
+  } else {
+    console.log('     the preview follows the sample text');
+  }
+
+  // Reset goes back to the theme colour.
+  fire('btn-reset-colour', 'click');
+  if (bodyNow['data-code-color'] !== '') {
+    failed = true;
+    console.log(`FAIL reset left data-code-color as "${bodyNow['data-code-color']}"`);
+  }
+  if (hexInput.value !== '') {
+    failed = true;
+    console.log('FAIL reset did not clear the hex field');
+  }
+  console.log('     "Use theme colour" clears the custom colour');
+}
+
 setTimeout(() => {
+  runPanelChecks();
   console.log('     fetch calls: ' + (fetchCalls.length ? fetchCalls.join(', ') : '(none)'));
   process.exit(failed ? 1 : 0);
 }, 50);
