@@ -607,14 +607,24 @@
     var voices = window.speechSynthesis.getVoices() || [];
     if (!voices.length) return;
 
-    var current = ttsVoice.value;
+    // A choice the reader made themselves is remembered in speechVoiceName,
+    // not in the picker's value, because loadVoices moves that value around
+    // to show the automatic choice below. Reading it from the wrong one is
+    // how a hand-picked voice gets quietly forgotten on the next reload.
+    var current = speechVoiceName;
     ttsVoice.innerHTML = '';
     var def = document.createElement('option');
     def.value = '';
     def.textContent = t('speak.system_default');
     ttsVoice.appendChild(def);
 
-    voices.forEach(function (voice) {
+    // The picker is in the same order pickVoice would choose from: the
+    // reader's own language first, and within it the voices matching the
+    // preferred gender. Operating systems list voices alphabetically by
+    // English name, which for a Hindi or Arabic reader puts a page of
+    // English options above the one voice that reads their language.
+    var ordered = voicesForLocale(voices);
+    ordered.forEach(function (voice) {
       var option = document.createElement('option');
       // value holds the voice name; the language is shown so a reader
       // can tell two similarly named voices apart.
@@ -623,29 +633,111 @@
       ttsVoice.appendChild(option);
     });
 
-    if (current) ttsVoice.value = current;
+    if (current) {
+      ttsVoice.value = current;
+      // A voice can be removed from the machine between one visit and the
+      // next, and a picker pointed at an option that is no longer there shows
+      // nothing at all. Treat that as no choice, so the fallback below
+      // applies and the reader is shown what will actually be read out.
+      if (ttsVoice.value !== current) current = '';
+    }
+
+    if (!current) {
+      // No voice of their own, so the app is choosing one for them. Leaving
+      // the picker on "System default" would then be a small lie: the
+      // system default is not what is read out, and a reader who wanted to
+      // see which voice that is had no way to find out. Showing the actual
+      // choice makes the guess visible and lets them correct it in one
+      // click, without saving anything they did not pick themselves.
+      var chosen = pickVoice();
+      if (chosen) ttsVoice.value = chosen.name;
+    }
   }
 
   // The speech API does not report whether a voice is male or female, so
   // this is a guess from the name, and it is only ever a guess: it is used
   // to order the choices, never to hide a voice the reader picked.
-  var FEMALE_VOICE_WORDS = 'female|woman|girl|samantha|karen|serena|moira|tessa|fiona|'
-    + 'victoria|zira|allison|ava|amelie|katja|lucia|marlene|nicky|petra|helena|susan|'
-    + 'agnes|carla|catherine|alice|joana|leila|maja|nora|sonia|paulina';
-  var MALE_VOICE_WORDS = 'male|man|boy|david|daniel|alex|fred|thomas|oliver|james|'
-    + 'george|paul|mark|rishi|diego|mateo|riccardo|yannick|albert|aaron|ryan|markus';
+  //
+  // The names are grouped by the languages the app ships in, because they
+  // are not one list that grows. Windows names its voices after people,
+  // and names them differently for each language - "Zira" is the English
+  // one, "Swara" is the Hindi one, "Hoda" is the Arabic one - so a list
+  // with only English names in it silently matched nothing for a Hindi or
+  // Arabic reader, who would have been handed whatever voice happened to
+  // be first. Adding a language means adding its names here.
+  //
+  // What is left over is 'unknown', which is the honest answer for a voice
+  // nobody has heard of, and it falls back to the browser's own choice.
+  var VOICE_NAMES = {
+    en: {
+      female: 'female|woman|girl|samantha|karen|serena|moira|tessa|fiona|'
+        + 'victoria|zira|allison|ava|amelie|katja|lucia|marlene|nicky|petra|'
+        + 'helena|susan|agnes|carla|catherine|alice|joana|nora|sonia|paulina|'
+        + 'aria|jenny|michelle|natural|hazel|zoe',
+      male: 'male|man|boy|david|daniel|alex|fred|thomas|oliver|james|george|'
+        + 'paul|mark|rishi|diego|mateo|riccardo|yannick|albert|aaron|ryan|'
+        + 'markus|brandon|christopher|eric|guy|jake|roger|steffan',
+    },
+    hi: {
+      // Windows: Swara and Hemant. Google: several Hindi voices, and the
+      // ones that name their gender say so outright.
+      female: 'female|woman|girl|swara|lakshmi|sangeeta|kalpana|lekha|asha',
+      male: 'male|man|boy|hemant|madhur|rishi|raj|aarav|ravi',
+    },
+    fr: {
+      // Windows: Denise and Henri. macOS adds a few more.
+      female: 'female|femme|woman|girl|denise|amélie|amelie|audrey|marie|'
+        + 'chantal|virginie|lucie',
+      male: 'male|homme|man|boy|henri|thomas|bernard|nicolas|olivier|'
+        + 'georges|antoine|mathieu|frédéric|frederic',
+    },
+    es: {
+      // Windows Mexico: Sabina and Diego. Windows Spain: Helena and Pablo.
+      female: 'female|mujer|woman|girl|sabina|helena|monica|lucia|paula|'
+        + 'carmen|rosa|valentina',
+      male: 'male|hombre|man|boy|diego|pablo|javier|raul|carlos|miguel|'
+        + 'sergio|antonio',
+    },
+    ar: {
+      // Windows Arabic: Hoda and Naayf. Google Arabic voices are named
+      // after the dialect, and say their gender where they know it.
+      female: 'female|امرأة|woman|girl|hoda|huuda|leila|maja|female-arabic',
+      male: 'male|رجل|man|boy|naayf|خليل|male-arabic',
+    },
+  };
+
+  // The names are matched on word boundaries, and "\\b" is the wrong tool
+  // for that here. It only treats a letter as a word character where the
+  // engine says so, which for "Amélie" it does but for "رجل" it does not:
+  // both boundaries land in the wrong place and the Arabic name is never
+  // found, leaving an Arabic reader with the system's arbitrary choice.
+  // Asking for "not a letter and not a digit" instead is the rule that was
+  // meant, and it behaves the same in every language on the list.
+  function namePattern(names) {
+    return new RegExp('(^|[^\\p{L}\\p{N}])(' + names + ')($|[^\\p{L}\\p{N}])', 'iu');
+  }
 
   function voiceGender(voice) {
+
     var name = ((voice && voice.name) || '') + ' ' + ((voice && voice.voiceURI) || '');
-    var re = new RegExp('\\b(' + FEMALE_VOICE_WORDS + ')\\b', 'i');
-    if (re.test(name)) return 'female';
-    re = new RegExp('\\b(' + MALE_VOICE_WORDS + ')\\b', 'i');
-    if (re.test(name)) return 'male';
+    var locale = String(META.locale || 'en').toLowerCase().split(/[-_]/)[0];
+    // The reader's own language is tried first, then English, because a
+    // Windows install lists its Hindi voices in English on some versions.
+    var order = [locale, 'en'];
+    for (var i = 0; i < order.length; i++) {
+      var set = VOICE_NAMES[order[i]];
+      if (!set) continue;
+      if (namePattern(set.female).test(name)) return 'female';
+      if (namePattern(set.male).test(name)) return 'male';
+    }
     return 'unknown';
   }
 
   // Voices that sound the right language first, so a Hindi interface is
   // not read by an English voice simply because it was listed earlier.
+  // Within each language group, the voices matching the preferred gender
+  // come first, so the automatic choice and the top of the picker agree
+  // with each other.
   function voicesForLocale(voices) {
     var wanted = String(META.locale || 'en').toLowerCase();
     var exact = [];
@@ -657,7 +749,20 @@
       else if (lang.split(/[-_]/)[0] === wanted.split(/[-_]/)[0]) sameLanguage.push(voice);
       else rest.push(voice);
     });
-    return exact.concat(sameLanguage, rest);
+
+    var preferred = ttsVoiceGenderValue;
+    var sort = function (list) {
+      if (preferred === 'any') return list;
+      var match = [];
+      var other = [];
+      list.forEach(function (voice) {
+        if (voiceGender(voice) === preferred) match.push(voice);
+        else other.push(voice);
+      });
+      return match.concat(other);
+    };
+
+    return sort(exact).concat(sort(sameLanguage), sort(rest));
   }
 
   function pickVoice() {
@@ -670,7 +775,13 @@
     for (var i = 0; i < voices.length; i++) {
       if (speechVoiceName && voices[i].name === speechVoiceName) return voices[i];
     }
-    if (speechVoiceName || ttsVoiceGenderValue === 'any') return null;
+    if (ttsVoiceGenderValue === 'any') return null;
+    // A saved voice that is not installed any more is deliberately still
+    // saved, so it comes back if the reader puts it back. It cannot be used
+    // today, though, and the alternative is leaving speech to whatever the
+    // operating system picks - which for a non-English reader is usually an
+    // English voice. So the preference below is used instead, and the picker
+    // shows the voice that is really being read out.
 
     var ordered = voicesForLocale(voices);
     for (var j = 0; j < ordered.length; j++) {
@@ -1274,6 +1385,11 @@
   if (ttsVoiceGenderEl) {
     ttsVoiceGenderEl.addEventListener('change', function () {
       ttsVoiceGenderValue = ttsVoiceGenderEl.value;
+      // The list is in the order the app would choose from, so it has to be
+      // rebuilt here too. Otherwise the picker still shows the old
+      // preference's order, and the voice actually being used is nowhere
+      // near the top of it.
+      loadVoices();
       saveConfig({ tts_voice_gender: ttsVoiceGenderValue });
     });
   }

@@ -65,6 +65,24 @@ function makeClassList() {
   };
 }
 
+// The <select> elements in the page, by id. They are named here rather
+// than guessed from a "-select" ending, because "tts-voice" and "focus-mode"
+// are selects too, and a suffix rule would quietly leave them out.
+//
+// Each one carries the values the template gives it, so a check that sets a
+// value is held to the same list a reader could have chosen from. That is
+// what makes "set it to something impossible" a real failure rather than a
+// value the stub quietly accepts.
+const SELECT_OPTIONS = {
+  'contrast-select': ['normal', 'high'],
+  'focus-mode': ['off', 'gutter', 'lines'],
+  'tts-voice-gender': ['male', 'female', 'any'],
+  'tts-hover-scope': ['off', 'controls', 'all'],
+  'theme-select': ['high-contrast', 'dark'],
+};
+
+const optionsFor = (values) => values.map((v) => makeElement(v, {}, { value: v, textContent: v }));
+
 function makeElement(id, extraAttributes = {}, extraProps = {}) {
   const attributes = {
     'aria-checked': 'true',
@@ -96,11 +114,22 @@ function makeElement(id, extraAttributes = {}, extraProps = {}) {
   // the whole point of the panel, and it has to be checkable.
   const style = { setProperty: noop, removeProperty: noop };
 
+  // Replacing a select's contents empties it, as setting innerHTML does in
+  // a browser. app.js clears the voice list that way before refilling it.
+  let html = '';
   const el = {
+    set innerHTML(value) {
+      html = value;
+      el.options = [];
+    },
+    get innerHTML() { return html; },
     id,
-    value: numericIds.has(id) ? '16' : 'OpenDyslexic',
+    // A select with nothing chosen reports an empty value, not a font name.
+    // Giving every one of them a font name made a genuine "nothing selected"
+    // read as "OpenDyslexic", which is nonsense in a failure message and
+    // hides what is actually wrong.
+    value: numericIds.has(id) ? '16' : (id.endsWith('-select') ? '' : 'OpenDyslexic'),
     textContent: '',
-    innerHTML: '',
     checked: false,
     disabled: false,
     hidden: false,
@@ -116,8 +145,18 @@ function makeElement(id, extraAttributes = {}, extraProps = {}) {
       (listeners[type] = listeners[type] || []).push(handler);
     },
     removeEventListener: noop,
-    appendChild: noop,
-    removeChild: noop,
+    // A real <select> collects the options appended to it, and empties them
+    // when its contents are replaced. Without this the voice picker looks
+    // permanently empty, and every check about what a reader can choose
+    // from would pass for the wrong reason.
+    options: [],
+    appendChild(child) {
+      el.options.push(child);
+      return child;
+    },
+    removeChild(child) {
+      el.options = el.options.filter((o) => o !== child);
+    },
     focus: noop,
     blur: noop,
     click: noop,
@@ -170,6 +209,30 @@ function makeElement(id, extraAttributes = {}, extraProps = {}) {
   if (extraProps.parent) {
     el.parentNode = extraProps.parent;
   }
+
+  // A real <select> only reports a value that one of its options has. Set
+  // it to anything else and it goes back to showing nothing, which is what
+  // happens to a saved voice that has since been uninstalled, and what
+  // happens to any value the page's markup does not offer. Without this the
+  // stub would keep whatever it was given, and the code under test could
+  // not tell a valid choice from an impossible one.
+  if (SELECT_OPTIONS[id] || id.endsWith('-select') || id === 'tts-voice') {
+    let chosen = extraProps.value !== undefined ? extraProps.value : el.value;
+    Object.defineProperty(el, 'value', {
+      get: () => chosen,
+      set: (v) => {
+        const options = el.options || [];
+        if (v === '' || options.some((o) => o.value === v)) chosen = v;
+        else chosen = '';
+      },
+      enumerable: true,
+      configurable: true,
+    });
+    // extraProps may have supplied the option list, so start from the
+    // default selection rather than from a value no option matches.
+    chosen = (el.options || []).some((o) => o.value === chosen) ? chosen : '';
+  }
+
   el.__listeners = listeners;
   el.__attributes = attributes;
   return el;
@@ -227,49 +290,180 @@ const CATALOGUE = JSON.parse(
     'utf8'
   )
 );
-const I18N_SCRIPTS = {
-  'i18n-data': makeElement('i18n-data', {}, { textContent: JSON.stringify(CATALOGUE) }),
-  'i18n-meta': makeElement(
-    'i18n-meta',
-    {},
-    { textContent: JSON.stringify({ locale: 'en', direction: 'ltr' }) }
-  ),
-};
+// The catalogue for any shipped language, read the same way as English.
+// Only the ones the checks below actually speak in are loaded, so a typo
+// in a key name still shows up as a raw key rather than as empty text.
+const CATALOGUES = { en: CATALOGUE };
+for (const code of ['hi', 'fr', 'es', 'ar']) {
+  CATALOGUES[code] = JSON.parse(
+    fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'accessible_ide', 'i18n', `${code}.json`),
+      'utf8'
+    )
+  );
+}
 
-const documentStub = {
-  body: makeElement('body'),
-  documentElement: makeElement('html'),
-  // The Settings button has focus when it is pressed, which is the case
-  // openSettings/closeSettings are written to handle.
-  activeElement: null,
-  getElementById: (id) => {
-    lookups.push(id);
-    if (id === 'font-select') {
-      if (!elements.has('font-select')) elements.set('font-select', FONT_SELECT);
-      return FONT_SELECT;
-    }
-    if (id in I18N_SCRIPTS) {
-      if (!elements.has(id)) elements.set(id, I18N_SCRIPTS[id]);
-      return elements.get(id);
-    }
-    if (id === 'language-select') {
-      // The stub's default value is a font name, which is not a locale.
-      if (!elements.has(id)) {
-        elements.set(id, makeElement(id, {}, { value: 'en' }));
+// The voices Windows installs, which is what the gender matching has to
+// cope with. The names are the reason this check exists: a Hindi voice is
+// called "Swara", not "Female", so a list of English names alone matches
+// nothing for a Hindi or Arabic reader.
+//
+// The order matters as much as the names. These are grouped so that the
+// voice a correct implementation should pick comes first within its
+// language, and a name that fails to match is replaced by the next one
+// along. That is what makes the checks below able to fail: an unmatched
+// Arabic or accented name shows up as the wrong voice, not as a pass.
+const INSTALLED_VOICES = [
+  { name: 'Zoe Test', lang: 'en-GB', voiceURI: 'zoe' },
+  { name: 'Test Voice', lang: 'en-GB', voiceURI: 'test' },
+  { name: 'Daniel Test', lang: 'en-US', voiceURI: 'daniel' },
+  { name: 'Microsoft Swara - Hindi (India)', lang: 'hi-IN', voiceURI: 'swara' },
+  { name: 'Microsoft Hemant - Hindi (India)', lang: 'hi-IN', voiceURI: 'hemant' },
+  // Arabic, with the Latin-named Windows voices behind these. Google and
+  // several Linux speech engines name their Arabic voices in Arabic, so a
+  // matcher that only understands ASCII letters quietly skips the best
+  // ones. "\\b" is one such matcher.
+  //
+  // The URIs are deliberately dull. A URI reading "ar-male" would match the
+  // word "male" and the voice would be found by accident, which would make
+  // this check pass for the wrong reason - the one thing a test here must
+  // never do.
+  { name: 'صوت رجل', lang: 'ar-SA', voiceURI: 'ar-001' },
+  { name: 'صوت امرأة', lang: 'ar-SA', voiceURI: 'ar-002' },
+  { name: 'Microsoft Hoda - Arabic (Saudi Arabia)', lang: 'ar-SA', voiceURI: 'hoda' },
+  { name: 'Microsoft Naayf - Arabic (Saudi Arabia)', lang: 'ar-SA', voiceURI: 'naayf' },
+  { name: 'Microsoft Diego - Spanish (Mexico)', lang: 'es-MX', voiceURI: 'diego' },
+  { name: 'Microsoft Sabina - Spanish (Mexico)', lang: 'es-MX', voiceURI: 'sabina' },
+  { name: 'Frédéric', lang: 'fr-FR', voiceURI: 'fr-003' },
+  { name: 'Amélie', lang: 'fr-FR', voiceURI: 'fr-004' },
+  { name: 'Microsoft Henri - French (France)', lang: 'fr-FR', voiceURI: 'henri' },
+  { name: 'Microsoft Denise - French (France)', lang: 'fr-FR', voiceURI: 'denise' },
+];
+
+// A page, in one language. The main checks use the English one; the
+// per-language checks ask for a fresh page each time, because the locale
+// is read once when the script loads and a real language change reloads
+// the page.
+//
+// bodyAttrs stands in for the settings the server rendered onto the body,
+// which is how a saved choice survives a reload.
+function makePage(locale, shared, bodyAttrs) {
+  const catalogue = CATALOGUES[locale] || CATALOGUE;
+  const i18nScripts = {
+    'i18n-data': makeElement('i18n-data', {}, { textContent: JSON.stringify(catalogue) }),
+    'i18n-meta': makeElement('i18n-meta', {}, {
+      textContent: JSON.stringify({ locale, direction: locale === 'ar' ? 'rtl' : 'ltr' }),
+    }),
+  };
+  // The main page shares the harness-wide element map and lookup log, so
+  // every existing check keeps working. The per-language pages get their
+  // own, because they exist only to ask one question.
+  const found = shared ? shared.elements : new Map();
+  const seen = shared ? shared.lookups : [];
+  const spoken = shared ? shared.spoken : [];
+
+  const attrs = Object.assign({ 'data-locale': locale }, bodyAttrs || {});
+
+  const doc = {
+    body: makeElement('body', attrs),
+
+    documentElement: makeElement('html'),
+    // The Settings button has focus when it is pressed, which is the case
+    // openSettings/closeSettings are written to handle.
+    activeElement: null,
+    getElementById: (id) => {
+      seen.push(id);
+      if (id === 'font-select') {
+        if (!found.has('font-select')) found.set('font-select', FONT_SELECT);
+        return FONT_SELECT;
       }
-      return elements.get(id);
-    }
-    if (!KNOWN_IDS.has(id)) return null;
-    if (!elements.has(id)) elements.set(id, makeElement(id));
-    return elements.get(id);
-  },
-  querySelector: () => makeElement('__query__'),
-  querySelectorAll: () => [],
-  createElement: (tag) => makeElement(tag),
-  addEventListener: noop,
-  removeEventListener: noop,
-  fonts: { ready: Promise.resolve() },
-};
+      if (id in i18nScripts) {
+        if (!found.has(id)) found.set(id, i18nScripts[id]);
+        return found.get(id);
+      }
+      if (id === 'language-select') {
+        // With its real option list, so the picker's value has to be one the
+        // list actually holds. A <select> offered a value that is not in it
+        // simply shows nothing, which is not what the page does.
+        if (!found.has(id)) {
+          found.set(id, makeElement(id, {}, {
+            value: locale,
+            options: Object.keys(CATALOGUES).map((code) => makeElement(code, {}, {
+              value: code,
+              textContent: code,
+            })),
+          }));
+        }
+        return found.get(id);
+      }
+      if (!KNOWN_IDS.has(id)) return null;
+      if (!found.has(id)) {
+        // Settings the template renders as a dropdown carry its real values,
+        // so a check cannot set one the page does not offer.
+        const props = SELECT_OPTIONS[id]
+          ? { value: SELECT_OPTIONS[id][0], options: optionsFor(SELECT_OPTIONS[id]) }
+          : {};
+        found.set(id, makeElement(id, { 'data-tts-voice-gender': 'male' }, props));
+      }
+      return found.get(id);
+    },
+    querySelector: () => makeElement('__query__'),
+    querySelectorAll: () => [],
+    createElement: (tag) => makeElement(tag),
+    addEventListener: noop,
+    removeEventListener: noop,
+    fonts: { ready: Promise.resolve() },
+  };
+
+  const context = {
+    console,
+    document: doc,
+    navigator: { language: locale, userAgent: 'stub' },
+    matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
+    localStorage: { getItem: () => null, setItem: noop, removeItem: noop },
+    fetch: fetchStub,
+    setTimeout, clearTimeout, setInterval, clearInterval,
+    Promise, JSON, Math, Date, Number, String, Object, Array,
+    parseInt, parseFloat, isNaN,
+    CodeMirror,
+    SpeechSynthesisUtterance: function (text) { this.text = text; },
+    window: {
+      location: {
+        hostname: 'localhost',
+        href: 'http://localhost:5000/',
+        protocol: 'http:', host: 'localhost:5000', origin: 'http://localhost:5000',
+        reload: noop,
+      },
+      speechSynthesis: {
+        getVoices: () => INSTALLED_VOICES,
+        speak: (utterance) => { spoken.push(utterance); },
+        cancel: noop,
+        onvoiceschanged: null,
+      },
+      addEventListener: noop,
+      removeEventListener: noop,
+    },
+  };
+  context.window.document = doc;
+  context.globalThis = context;
+  context.self = context;
+  vm.createContext(context);
+  return { context, doc, found, spoken };
+}
+
+// Fire a handler on an element of a page built by makePage.
+function fireOn(page, id, type) {
+  const el = page.found.get(id);
+  if (!el) return false;
+  const handler = (el.__listeners[type] || [])[0];
+  if (!handler) return false;
+  handler(fakeEventFor(page));
+  return true;
+}
+
+function fakeEventFor(page) {
+  return { preventDefault: noop, stopPropagation: noop, target: page.doc.body };
+}
 
 const fetchCalls = [];
 const configPosts = [];
@@ -297,67 +491,22 @@ function fetchStub(url, options) {
   return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
 }
 
-const sandbox = {
-  console,
-  document: documentStub,
-  navigator: { language: 'en-GB', userAgent: 'stub' },
-  // app.js asks the operating system whether motion should be reduced. The
-  // stub reports "no", which is the ordinary case; the seeding check below
-  // then proves the switch can also be flipped the other way.
-  matchMedia: (query) => ({
-    media: query,
-    matches: false,
-    addEventListener: noop,
-    removeEventListener: noop,
-  }),
-  localStorage: { getItem: () => null, setItem: noop, removeItem: noop },
-  fetch: fetchStub,
-  setTimeout,
-  clearTimeout,
-  setInterval,
-  clearInterval,
-  Promise,
-  JSON,
-  Math,
-  Date,
-  Number,
-  String,
-  Object,
-  Array,
-  parseInt,
-  parseFloat,
-  isNaN,
-  CodeMirror,
-  SpeechSynthesisUtterance: function (text) { this.text = text; },
-  window: {
-    location: {
-      hostname: 'localhost',
-      href: 'http://localhost:5000/',
-      protocol: 'http:',
-      host: 'localhost:5000',
-      origin: 'http://localhost:5000',
-      reload: () => { reloads.push(true); },
-    },
-    speechSynthesis: {
-      // A deliberately mixed list. Without a female name in it, the
-      // gender preference would appear to work by accident.
-      getVoices: () => ([
-        { name: 'Zoe Test', lang: 'en-GB', voiceURI: 'zoe' },
-        { name: 'Test Voice', lang: 'en-GB', voiceURI: 'test' },
-        { name: 'Daniel Test', lang: 'en-US', voiceURI: 'daniel' },
-      ]),
-      spoken: [],
-      speak: (utterance) => { spokenUtterances.push(utterance); },
-      cancel: noop,
-      onvoiceschanged: null,
-    },
-    addEventListener: noop,
-    removeEventListener: noop,
-  },
-};
-sandbox.window.document = documentStub;
-sandbox.globalThis = sandbox;
-sandbox.self = sandbox;
+// The page the bulk of the checks run against: English, sharing the
+// harness-wide element map, lookup log and utterance log.
+const shared = { elements, lookups, spoken: spokenUtterances };
+const mainPage = makePage('en', shared);
+const sandbox = mainPage.context;
+const documentStub = mainPage.doc;
+// app.js asks the operating system whether motion should be reduced. The
+// page above reports "no", which is the ordinary case; the seeding check
+// below then proves the switch can also be flipped the other way.
+sandbox.matchMedia = (query) => ({
+  media: query,
+  matches: false,
+  addEventListener: noop,
+  removeEventListener: noop,
+});
+sandbox.window.location.reload = () => { reloads.push(true); };
 
 let failed = false;
 try {
@@ -821,19 +970,199 @@ function runSpeechChecks() {
     console.log('     speech follows the interface language (' +
                 localised[0].lang + '), not the system default');
   }
-  const withVoice = utterances.filter((u) => u.voice);
-  if (!withVoice.length) {
-    failed = true;
-    console.log('FAIL no utterance picked a voice, so the preferred gender was ignored');
-  } else if (withVoice[0].voice.name !== 'Daniel Test') {
-    failed = true;
-    console.log('FAIL the male preference picked "' + withVoice[0].voice.name +
-                '" rather than the only male voice installed');
-  } else {
-    console.log('     the male preference is applied when no voice is chosen by hand');
+  // The page above was switched to French by the language check, so the
+  // per-language voice questions are asked on pages of their own. That is
+  // what really happens: choosing a language reloads the page, and the
+  // locale is read once at load.
+  //
+  // The bug this guards against: Windows names its Hindi voices "Swara" and
+  // "Hemant", not "Female" and "Male". An English-only name list matches
+  // nothing there, so a Hindi reader silently gets whatever voice the
+  // system liked best - which is the whole reason the language matters.
+  for (const [code, expected] of [
+    ['en', { male: 'Daniel', female: 'Zoe' }],
+    ['hi', { male: 'Hemant', female: 'Swara' }],
+    ['ar', { male: 'رجل', female: 'امرأة' }],
+    ['es', { male: 'Diego', female: 'Sabina' }],
+    // Accents, which "\\b" happens to cope with in current engines. They are
+    // here as a second example of a name the matcher has to hold, not
+    // because they were broken.
+    ['fr', { male: 'Frédéric', female: 'Amélie' }],
+  ]) {
+    for (const gender of ['male', 'female']) {
+      const page = makePage(code);
+      vm.runInContext(source, page.context, { filename: 'app.js' });
+      const picker = page.found.get('tts-voice-gender');
+      picker.value = gender;
+      fireOn(page, 'tts-voice-gender', 'change');
+      fireOn(page, 'btn-test-voice', 'click');
+      const picked = page.spoken.find((u) => u.voice);
+      if (!picked) {
+        failed = true;
+        console.log(`FAIL no voice at all for a ${code} reader who wanted ${gender}`);
+      } else if (!picked.voice.name.includes(expected[gender])) {
+        failed = true;
+        console.log(`FAIL a ${code} reader who wanted ${gender} got ` +
+                    `"${picked.voice.name}" rather than ${expected[gender]}`);
+      } else if (picked.lang && picked.lang.split('-')[0] !== code) {
+        failed = true;
+        console.log(`FAIL a ${code} reader got voice "${picked.voice.name}" ` +
+                    `spelling the text as "${picked.lang}"`);
+      }
+    }
+  }
+  console.log('     every shipped language picks a voice in its own language and gender');
+
+  // A manual choice outranks the gender preference, whichever language the
+  // page is in. This is the reader who has already found the voice they want.
+  {
+    const page = makePage('es');
+    vm.runInContext(source, page.context, { filename: 'app.js' });
+    const gender = page.found.get('tts-voice-gender');
+    gender.value = 'male';
+    fireOn(page, 'tts-voice-gender', 'change');
+    // The picker stores the voice's name, which is what a reader sees in
+    // the list, so the check looks the option up the same way.
+    const options = [...(page.found.get('tts-voice').options || [])];
+    const wanted = options.find((o) => o.value.includes('Sabina'));
+    if (!wanted) {
+      failed = true;
+      console.log('FAIL the voice list offered no Spanish voice to choose by hand: ' +
+                  options.map((o) => o.value).join(', '));
+    } else {
+      const picker = page.found.get('tts-voice');
+      picker.value = wanted.value;
+      fireOn(page, 'tts-voice', 'change');
+      fireOn(page, 'btn-test-voice', 'click');
+      const picked = page.spoken.find((u) => u.voice);
+      if (!picked || !picked.voice.name.includes('Sabina')) {
+        failed = true;
+        console.log('FAIL a hand-picked female voice was overruled by the male preference');
+      } else {
+        console.log('     a voice chosen by hand is never overruled by the gender setting');
+      }
+    }
+  }
+
+  // A voice chosen by hand is remembered across a reload. loadVoices reads
+  // the picker's value to do this, which is wrong: it also moves that value
+  // to show the automatic choice, so a hand-picked voice was forgotten the
+  // next time the page loaded.
+  {
+    const page = makePage('en');
+    vm.runInContext(source, page.context, { filename: 'app.js' });
+    const list = [...(page.found.get('tts-voice').options || [])];
+    const sabina = list.find((o) => o.value.includes('Sabina'));
+    if (!sabina) {
+      failed = true;
+      console.log('FAIL the English page listed no Spanish voice to pick by hand');
+    } else {
+      const picker = page.found.get('tts-voice');
+      picker.value = sabina.value;
+      fireOn(page, 'tts-voice', 'change');
+      // Pretend the page was reloaded: the server renders the saved choice
+      // back onto the body, and loadVoices runs again over the same list.
+      const reloaded = makePage('en', null, { 'data-tts-voice': sabina.value });
+      vm.runInContext(source, reloaded.context, { filename: 'app.js' });
+      const stillThere = reloaded.found.get('tts-voice').value;
+      if (stillThere !== sabina.value) {
+        failed = true;
+        console.log(`FAIL a hand-picked voice was forgotten on reload: the picker ` +
+                    `shows "${stillThere}" rather than "${sabina.value}"`);
+      } else {
+        console.log('     a hand-picked voice survives the list being rebuilt');
+      }
+    }
+  }
+
+  // With nothing chosen by hand, the app is choosing a voice for the reader.
+  // The picker has to say which one, or "System default" is describing
+  // something that is not read out - and a reader who wants a different
+  // voice has no way to see what they are being given.
+  {
+    // Only the posts from this page count. The checks above deliberately
+    // change the picker, and a save from one of those is expected.
+    const postsBefore = configPosts.length;
+    const page = makePage('hi');
+    vm.runInContext(source, page.context, { filename: 'app.js' });
+    const picker = page.found.get('tts-voice');
+    if (!picker.value) {
+      failed = true;
+      console.log('FAIL the picker still says "System default" although a Hindi ' +
+                  'voice is the one actually being used');
+    } else if (!picker.value.includes('Hemant')) {
+      failed = true;
+      console.log(`FAIL the picker claims "${picker.value}" but the app reads with Hemant`);
+    } else {
+      console.log('     the picker shows the voice the app chose by itself');
+    }
+    // Showing a guess is not the same as recording a choice. If the app saved
+    // this, the reader's own preference would be silently overwritten with
+    // the app's guess, and they would have no way back to "no preference".
+    const saved = configPosts.slice(postsBefore).filter((p) => 'tts_voice' in p);
+    if (saved.length) {
+      failed = true;
+      console.log('FAIL the app saved a voice the reader never picked: ' +
+                  JSON.stringify(saved[0]));
+    } else {
+      console.log('     showing the automatic choice does not save it as a choice');
+    }
+  }
+
+  // Changing the preference has to reorder the list, because the list is in
+  // the order the app chooses from. A list still sorted for the old
+  // preference puts the voice actually in use somewhere in the middle.
+  {
+    const page = makePage('es');
+    vm.runInContext(source, page.context, { filename: 'app.js' });
+    const picker = page.found.get('tts-voice');
+    const names = () => (picker.options || []).map((o) => o.value);
+    genderSelectFor(page, 'male');
+    const maleFirst = names().findIndex((n) => n.includes('Diego'));
+    genderSelectFor(page, 'female');
+    const femaleFirst = names().findIndex((n) => n.includes('Sabina'));
+    if (maleFirst < 1 || femaleFirst < 1) {
+      failed = true;
+      console.log('FAIL the voice list lost a Spanish voice: ' + names().join(', '));
+    } else if (femaleFirst > maleFirst) {
+      failed = true;
+      console.log('FAIL asking for a female voice left the male voice at the top: ' +
+                  names().join(', '));
+    } else {
+      console.log('     changing the preference reorders the list to match it');
+    }
+  }
+
+  // A saved voice can be uninstalled between one visit and the next. A
+  // picker pointed at an option that is no longer in the list shows nothing
+  // at all, which reads as a broken control rather than as a missing voice.
+  {
+    const page = makePage('en', null, { 'data-tts-voice': 'A Voice That Was Removed' });
+    vm.runInContext(source, page.context, { filename: 'app.js' });
+    const shown = page.found.get('tts-voice').value;
+    if (!shown) {
+      failed = true;
+      console.log('FAIL a voice that is no longer installed left the picker blank');
+    } else if (shown === 'A Voice That Was Removed') {
+      failed = true;
+      console.log('FAIL the picker still claims a voice that is not installed');
+    } else if (!page.spoken.length) {
+      // Nothing has been asked for to speak yet, which is fine; the point
+      // is only that the picker names something real.
+      console.log('     the picker falls back to a voice that is really installed');
+    } else {
+      console.log('     the picker falls back to a voice that is really installed');
+    }
   }
 
   process.exit(failed ? 1 : 0);
+}
+
+// Change the preferred gender on a page of its own, as a reader would.
+function genderSelectFor(page, value) {
+  const el = page.found.get('tts-voice-gender');
+  el.value = value;
+  fireOn(page, 'tts-voice-gender', 'change');
 }
 
 setTimeout(() => {
