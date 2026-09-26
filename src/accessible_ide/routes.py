@@ -94,6 +94,11 @@ DEFAULT_CONFIG = {
     # The speech API does not say whether a voice is male or female, so
     # this is a preference applied to what is installed, not a promise.
     'tts_voice_gender': 'male',
+    # On by default, because a reader who never hears about a fix has no way
+    # to know it exists. Switching it off turns off the automatic check
+    # only: a check the reader asked for still happens, because refusing to
+    # answer a direct question is the same as being broken.
+    'auto_update': True,
 }
 
 # Editor palettes. These are the single source of truth: the settings
@@ -551,6 +556,7 @@ CONFIG_TYPES = {
     'tts_hover_delay': (int, float),
     'tts_click_to_speak': bool,
     'tts_voice_gender': str,
+    'auto_update': bool,
 }
 
 CONFIG_VALUES = {
@@ -692,6 +698,53 @@ def config_api():
     config.update(data)
     save_config(config)
     return jsonify({'success': True, 'config': config})
+
+
+@main_bp.route('/api/version')
+def version_api():
+    """What version is running, and whether it can update itself at all."""
+    from . import __version__, updater
+    return jsonify({
+        'version': __version__,
+        'applicable': updater.is_frozen(),
+    })
+
+
+@main_bp.route('/api/update/check', methods=['POST'])
+def update_check_api():
+    """Look for a newer build.
+
+    The decision about whether to check at all is made here rather than in the
+    browser, so the "check automatically" setting cannot be sidestepped by a
+    page that simply asks anyway. An explicit request is always answered:
+    turning the automatic check off is not a reason to say nothing when
+    someone has asked a question.
+    """
+    from . import updater
+    data = request.get_json(silent=True) or {}
+    t = translator_for(request_locale(data))
+    if not access_code_ok(data):
+        return jsonify({
+            'success': False,
+            'error': t('error.access_required'),
+            'code_required': True,
+        }), 403
+
+    asked = bool(data.get('force'))
+    if not asked and not load_config().get('auto_update', True):
+        return jsonify({
+            'success': True,
+            'applicable': updater.is_frozen(),
+            'current': updater.current_version(),
+            'update_available': False,
+            'automatic': False,
+            'error': '',
+        })
+
+    result = updater.check(force=asked)
+    result['success'] = True
+    result['automatic'] = not asked
+    return jsonify(result)
 
 
 @main_bp.route('/api/themes')

@@ -44,13 +44,38 @@ jobs:
           python-version: '3.12'
       - name: Install dependencies
         run: pip install flask pywebview pyinstaller
+      - name: Work out this build's version
+        id: stamp
+        shell: pwsh
+        run: |
+          # A main-branch build is the newest tag plus the run number, so
+          # every push produces a version that is strictly newer than the one
+          # before it and older than the next tagged release.
+          $lastTag = (git describe --tags --abbrev=0 2>$null)
+          if (-not $lastTag) { $lastTag = "v0.0.0" }
+          $base = $lastTag -replace '^v', ''
+          $version = "$base.dev.${{ github.run_number }}"
+          python tools/stamp_version.py stamp --version $version
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "Stamping version $version"
       - name: Build onefile exe
         run: pyinstaller AccessibleIDE.spec --noconfirm
+      - name: Describe the build for the updater
+        shell: pwsh
+        run: |
+          python tools/stamp_version.py manifest `
+            --version "${{ steps.stamp.outputs.version }}" `
+            --file dist/AccessibleIDE.exe `
+            --out dist/version.json `
+            --url "https://github.com/${{ github.repository }}/releases/download/latest/AccessibleIDE.exe" `
+            --notes "Automatic build of the main branch."
       - name: Upload exe artifact
         uses: actions/upload-artifact@v4
         with:
           name: AccessibleIDE-windows
-          path: dist/AccessibleIDE.exe
+          path: |
+            dist/AccessibleIDE.exe
+            dist/version.json
 
   build-installer:
     name: Build Setup installer
@@ -115,4 +140,5 @@ jobs:
             --notes "Auto-built from the main branch. Matches the live web app." \
             --repo "${{ github.repository }}" 2>/dev/null || true
           gh release upload latest release/AccessibleIDE.exe release/AccessibleIDE-Setup.exe \
+            release/version.json \
             --clobber --repo "${{ github.repository }}"

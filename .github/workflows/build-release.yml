@@ -38,13 +38,35 @@ jobs:
           python-version: '3.12'
       - name: Install dependencies
         run: pip install flask pywebview pyinstaller
+      - name: Work out this build's version
+        id: stamp
+        shell: pwsh
+        run: |
+          # A tag is the version itself, so the release and the program
+          # inside it always agree.
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          python tools/stamp_version.py stamp --version $version
+          "version=$version" >> $env:GITHUB_OUTPUT
       - name: Build exe
         run: pyinstaller AccessibleIDE.spec --noconfirm
+      - name: Describe the build for the updater
+        shell: pwsh
+        run: |
+          # The address has to name the tag, not "latest", so a reader who
+          # installed this release is pointed at this exact file.
+          python tools/stamp_version.py manifest `
+            --version "${{ steps.stamp.outputs.version }}" `
+            --file dist/AccessibleIDE.exe `
+            --out dist/version.json `
+            --url "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/AccessibleIDE.exe" `
+            --notes "Release ${{ github.ref_name }}."
       - name: Upload exe artifact
         uses: actions/upload-artifact@v4
         with:
           name: AccessibleIDE-windows
-          path: dist/AccessibleIDE.exe
+          path: |
+            dist/AccessibleIDE.exe
+            dist/version.json
 
   build-installer:
     name: Build Setup installer
@@ -107,5 +129,6 @@ jobs:
           files: |
             release/AccessibleIDE.exe
             release/AccessibleIDE-Setup.exe
+            release/version.json
           generate_release_notes: true
           prerelease: true
