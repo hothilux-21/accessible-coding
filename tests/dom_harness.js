@@ -22,7 +22,9 @@ const KNOWN_IDS = new Set([
   'settings-dialog', 'settings-title', 'settings-status', 'btn-settings',
   'btn-settings-close', 'font-select', 'font-size', 'font-size-label',
   'line-height', 'line-height-label', 'letter-spacing',
-  'letter-spacing-label', 'blur-intensity', 'blur-intensity-label',
+  'letter-spacing-label', 'line-height-less', 'line-height-more',
+  'letter-spacing-less', 'letter-spacing-more',
+  'blur-intensity', 'blur-intensity-label',
   'blur-field', 'theme-select', 'contrast-select', 'focus-mode',
   'reduce-motion', 'reduce-motion-state',
   'tts-toggle', 'tts-state', 'tts-voice', 'tts-rate', 'tts-rate-label',
@@ -49,6 +51,27 @@ const FONT_COLOURS = [
 const numericIds = new Set([
   'font-size', 'line-height', 'letter-spacing', 'blur-intensity', 'tts-rate',
 ]);
+
+// The two spacing sliders, with the limits, the step and the starting value
+// the template gives them.
+//
+// app.js reads min, max and step off the element rather than repeating them,
+// so a fake slider without these would let every stepper check pass for the
+// wrong reason: notchTo() would be handed NaN and clamp to nothing.
+const RANGE_INPUTS = {
+  'line-height': { min: '1', max: '2.4', step: '0.1', value: '1.6' },
+  'letter-spacing': { min: '-0.5', max: '4', step: '0.1', value: '0.5' },
+};
+
+// The notching buttons, with the slider each one drives and the direction it
+// moves it. The target is a data attribute, so a button that lost it would
+// quietly stop working while still looking right in the DOM.
+const STEPPER_BUTTONS = {
+  'line-height-less': { 'data-target': 'line-height', 'data-step': '-0.1' },
+  'line-height-more': { 'data-target': 'line-height', 'data-step': '0.1' },
+  'letter-spacing-less': { 'data-target': 'letter-spacing', 'data-step': '-0.1' },
+  'letter-spacing-more': { 'data-target': 'letter-spacing', 'data-step': '0.1' },
+};
 
 const lookups = [];
 const noop = () => {};
@@ -82,6 +105,18 @@ const SELECT_OPTIONS = {
 };
 
 const optionsFor = (values) => values.map((v) => makeElement(v, {}, { value: v, textContent: v }));
+
+// The attributes an element carries in the template, beyond the ones every
+// element gets. min, max and step are attributes rather than properties, so
+// this is where the sliders' limits have to live.
+function attributesFor(id) {
+  const range = RANGE_INPUTS[id];
+  return Object.assign(
+    { 'data-tts-voice-gender': 'male' },
+    range ? { min: range.min, max: range.max, step: range.step } : {},
+    STEPPER_BUTTONS[id] || {},
+  );
+}
 
 function makeElement(id, extraAttributes = {}, extraProps = {}) {
   const attributes = {
@@ -400,10 +435,14 @@ function makePage(locale, shared, bodyAttrs) {
       if (!found.has(id)) {
         // Settings the template renders as a dropdown carry its real values,
         // so a check cannot set one the page does not offer.
-        const props = SELECT_OPTIONS[id]
-          ? { value: SELECT_OPTIONS[id][0], options: optionsFor(SELECT_OPTIONS[id]) }
-          : {};
-        found.set(id, makeElement(id, { 'data-tts-voice-gender': 'male' }, props));
+        const props = Object.assign(
+          {},
+          SELECT_OPTIONS[id]
+            ? { value: SELECT_OPTIONS[id][0], options: optionsFor(SELECT_OPTIONS[id]) }
+            : {},
+          RANGE_INPUTS[id] ? { value: RANGE_INPUTS[id].value } : {},
+        );
+        found.set(id, makeElement(id, attributesFor(id), props));
       }
       return found.get(id);
     },
@@ -535,6 +574,8 @@ const interactions = [
   ['font-select', 'change'], ['font-size', 'input'], ['font-size', 'change'],
   ['line-height', 'input'], ['line-height', 'change'],
   ['letter-spacing', 'input'], ['letter-spacing', 'change'],
+  ['line-height-less', 'click'], ['line-height-more', 'click'],
+  ['letter-spacing-less', 'click'], ['letter-spacing-more', 'click'],
   ['blur-intensity', 'input'], ['blur-intensity', 'change'],
   ['theme-select', 'change'], ['contrast-select', 'change'],
   ['focus-mode', 'change'],
@@ -1165,8 +1206,147 @@ function genderSelectFor(page, value) {
   fireOn(page, 'tts-voice-gender', 'change');
 }
 
+// ---------------------------------------------------------------------------
+// The notching buttons either side of the two spacing sliders.
+//
+// Dragging a slider thumb is hard with a shaky hand and near impossible
+// behind a screen magnifier, so these buttons are a second way to reach the
+// same two values. What matters is that they cannot put a number on screen
+// that the server will refuse.
+// ---------------------------------------------------------------------------
+function runStepperChecks() {
+  const cases = [
+    {
+      label: 'line height',
+      target: 'line-height',
+      less: 'line-height-less',
+      more: 'line-height-more',
+      out: 'line-height-label',
+      bodyAttr: 'data-line-height',
+      min: 1,
+      max: 2.4,
+      start: 1.6,
+      floatFrom: '2.3',
+      floatTo: '2.4',
+      // Line height is a plain ratio; letter spacing is measured in pixels.
+      // The readout says so, and a check that assumed otherwise would be
+      // asserting the wrong thing.
+      suffix: '',
+    },
+    {
+      label: 'letter spacing',
+      target: 'letter-spacing',
+      less: 'letter-spacing-less',
+      more: 'letter-spacing-more',
+      out: 'letter-spacing-label',
+      bodyAttr: 'data-letter-spacing',
+      min: -0.5,
+      max: 4,
+      start: 0.5,
+      floatFrom: '1.1',
+      floatTo: '1.2',
+      suffix: 'px',
+    },
+  ];
+
+  for (const c of cases) {
+    const slider = elements.get(c.target);
+    const less = elements.get(c.less);
+    const more = elements.get(c.more);
+    const out = elements.get(c.out);
+    if (!slider || !less || !more || !out) {
+      failed = true;
+      console.log(`FAIL ${c.label}: a stepper control is missing from the page`);
+      continue;
+    }
+
+    // One notch, up and down, from the middle of the range.
+    slider.value = '1.4';
+    fire(c.more, 'click');
+    if (slider.value !== '1.5') {
+      failed = true;
+      console.log(`FAIL ${c.label}: one notch up from 1.4 gave ${slider.value}, not 1.5`);
+    }
+    if (out.textContent !== '1.5' + c.suffix) {
+      failed = true;
+      console.log(`FAIL ${c.label}: the readout says ${out.textContent}, not 1.5${c.suffix}`);
+    }
+    if (documentStub.body.__attributes[c.bodyAttr] !== '1.5') {
+      failed = true;
+      console.log(`FAIL ${c.label}: the page did not restyle, still ` +
+        `${documentStub.body.__attributes[c.bodyAttr]}`);
+    }
+    const beforeDown = configPosts.length;
+    fire(c.less, 'click');
+    if (slider.value !== '1.4') {
+      failed = true;
+      console.log(`FAIL ${c.label}: one notch down gave ${slider.value}, not 1.4`);
+    }
+    const saved = configPosts.slice(beforeDown).filter((p) => c.target.replace('-', '_') in p);
+    if (saved.length !== 1 || saved[0][c.target.replace('-', '_')] !== 1.4) {
+      failed = true;
+      console.log(`FAIL ${c.label}: the new value was not saved, got ` +
+        JSON.stringify(configPosts.slice(beforeDown)));
+    }
+
+    // The reason for the snapping. 2.3 + 0.1 is 2.4000000000000004 and
+    // 1.1 + 0.1 is 1.2000000000000002 in floating point, and a reader
+    // should never be shown either. The two ranges need different starting
+    // points to get there, which is why this is not a constant.
+    slider.value = c.floatFrom;
+    fire(c.more, 'click');
+    if (slider.value !== c.floatTo) {
+      failed = true;
+      console.log(`FAIL ${c.label}: one notch up from ${c.floatFrom} read ` +
+        `${slider.value}, not ${c.floatTo}`);
+    }
+
+    // At each end the button that would overshoot is disabled, rather than
+    // left there to do nothing when pressed.
+    slider.value = String(c.max);
+    fire(c.target, 'input');
+    if (!more.disabled) {
+      failed = true;
+      console.log(`FAIL ${c.label}: the "more" button is still live at the maximum`);
+    }
+    slider.value = String(c.min);
+    fire(c.target, 'input');
+    if (!less.disabled) {
+      failed = true;
+      console.log(`FAIL ${c.label}: the "less" button is still live at the minimum`);
+    }
+    // Dragging back into range brings the button back to life, which is the
+    // half that is easy to forget.
+    slider.value = String(c.start);
+    fire(c.target, 'input');
+    if (more.disabled || less.disabled) {
+      failed = true;
+      console.log(`FAIL ${c.label}: both buttons stayed disabled away from the ends`);
+    }
+    slider.value = String(c.start);
+  }
+
+  // A disabled button is not the only guard. If it is ever pressed anyway,
+  // the value still must not leave the range the server accepts.
+  for (const c of cases) {
+    const slider = elements.get(c.target);
+    const more = elements.get(c.more);
+    slider.value = String(c.max);
+    more.disabled = true;
+    more.__listeners.click.forEach((handler) => handler(fakeEvent));
+    if (parseFloat(slider.value) > c.max) {
+      failed = true;
+      console.log(`FAIL ${c.label}: pressing "more" at the maximum left the value at ` +
+        `${slider.value}, outside the range`);
+    }
+  }
+
+  console.log('     the spacing steppers notch, clamp, save and disable at their limits');
+}
+
 setTimeout(() => {
   runPanelChecks();
+  runStepperChecks();
   runLanguageChecks();
   setTimeout(runLanguageReloadCheck, 10);
 }, 50);

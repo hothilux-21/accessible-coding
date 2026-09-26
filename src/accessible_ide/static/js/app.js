@@ -381,6 +381,83 @@
     editor.refresh();
   }
 
+  // The notching buttons either side of the two spacing sliders.
+  //
+  // Dragging a slider thumb is a poor target for a shaky hand and a worse
+  // one behind a screen magnifier, and the arrow keys only work once the
+  // slider has focus. The buttons are a second way in, not a replacement.
+  //
+  // Everything is read from the slider being driven rather than written out
+  // again here. A button that disagrees with its own slider is a control
+  // that lies: the value stops short or overshoots, and the reader is shown
+  // a number the server then rejects.
+  var stepperButtons = [
+    'line-height-less', 'line-height-more',
+    'letter-spacing-less', 'letter-spacing-more',
+  ].map(function (id) {
+    return document.getElementById(id);
+  }).filter(function (button) {
+    return !!button;
+  });
+
+  function stepperTarget(button) {
+    var id = button.getAttribute('data-target');
+    // A button with no target is a mistake in the markup, not something a
+    // reader can press, so it is skipped rather than looked up as "null".
+    return id ? document.getElementById(id) : null;
+  }
+
+  // The nearest value the slider can actually take. Snapping to the step
+  // grid first, then rounding, is what keeps 1.4 + 0.1 from arriving as
+  // 1.5000000000000002 and being shown in the field.
+  function notchTo(target, value) {
+    var min = parseFloat(target.getAttribute('min'));
+    var max = parseFloat(target.getAttribute('max'));
+    var increment = parseFloat(target.getAttribute('step')) || 0.1;
+    var snapped = min + (Math.round((value - min) / increment) * increment);
+    return Math.min(max, Math.max(min, Number(snapped.toFixed(2))));
+  }
+
+  // At the end of its travel a button is disabled rather than doing nothing,
+  // so a reader is told the value cannot go further this way instead of
+  // pressing it and watching nothing happen.
+  function paintStepperLimits() {
+    stepperButtons.forEach(function (button) {
+      var target = stepperTarget(button);
+      if (!target) return;
+      var value = parseFloat(target.value);
+      var step = parseFloat(button.getAttribute('data-step'));
+      if (isNaN(value) || isNaN(step)) return;
+      if (step < 0) {
+        button.disabled = value <= parseFloat(target.getAttribute('min'));
+      } else {
+        button.disabled = value >= parseFloat(target.getAttribute('max'));
+      }
+    });
+  }
+
+  stepperButtons.forEach(function (button) {
+    button.addEventListener('click', function () {
+      var target = stepperTarget(button);
+      if (!target) return;
+      var step = parseFloat(button.getAttribute('data-step'));
+      var next = notchTo(target, parseFloat(target.value) + step);
+      if (isNaN(next)) return;
+      target.value = String(next);
+      // The slider's own listeners are not told, because no event happened
+      // on it. Applying and saving here keeps one place where each value
+      // becomes a setting, rather than two that can drift apart.
+      if (target === lineHeight) {
+        applyLineHeight(target.value);
+        saveConfig({ line_height: next });
+      } else if (target === letterSpacing) {
+        applyLetterSpacing(target.value);
+        saveConfig({ letter_spacing: next });
+      }
+      paintStepperLimits();
+    });
+  });
+
   // 0 = barely faded, 1 = strongly faded. A 0 value would hide the other
   // lines completely, so we keep a floor of 0.15.
   function applyBlurIntensity(value) {
@@ -1287,6 +1364,7 @@
 
   lineHeight.addEventListener('input', function () {
     applyLineHeight(lineHeight.value);
+    paintStepperLimits();
   });
 
   lineHeight.addEventListener('change', function () {
@@ -1295,6 +1373,7 @@
 
   letterSpacing.addEventListener('input', function () {
     applyLetterSpacing(letterSpacing.value);
+    paintStepperLimits();
   });
 
   letterSpacing.addEventListener('change', function () {
@@ -1456,6 +1535,7 @@
   applyFontSize(parseInt(body.getAttribute('data-font-size') || '16', 10));
   applyLineHeight(body.getAttribute('data-line-height') || '1.6');
   applyLetterSpacing(body.getAttribute('data-letter-spacing') || '0.5');
+  paintStepperLimits();
   applyBlurIntensity(body.getAttribute('data-blur-intensity') || '0.5');
   applyFocusMode(body.getAttribute('data-focus-mode') || 'off');
   syncBlurField();

@@ -23,9 +23,12 @@ SRC = str(REPO_ROOT / "src")
 if SRC not in sys.path:
     sys.path.append(SRC)
 
-from accessible_ide import create_app, routes  # noqa: E402
+from accessible_ide import create_app, i18n, routes  # noqa: E402
 
 APP_JS = REPO_ROOT / "src" / "accessible_ide" / "static" / "js" / "app.js"
+STYLESHEET = (
+    REPO_ROOT / "src" / "accessible_ide" / "static" / "css" / "style.css"
+)
 
 # Controls the settings panel is expected to provide. Listed separately
 # from the automatic scan so a missing control produces a clear message
@@ -104,6 +107,7 @@ class RenderedPageFixture(unittest.TestCase):
     def setUpClass(cls):
         cls.html = render_index()
         cls.js = APP_JS.read_text(encoding="utf-8")
+        cls.css = STYLESHEET.read_text(encoding="utf-8")
         cls.html_ids = set(re.findall(r'id="([^"]+)"', cls.html))
 
 
@@ -279,6 +283,154 @@ class TemplateContractTests(RenderedPageFixture):
                     float(high),
                     f"slider max for {key} disagrees with CONFIG_RANGES",
                 )
+
+    def test_every_spacing_slider_has_a_button_either_side_of_it(self):
+        # Dragging a slider thumb is hard with a shaky hand and near
+        # impossible behind a screen magnifier. The buttons are a second way
+        # in, so each spacing slider needs one that lowers it and one that
+        # raises it, and they have to name the slider they drive.
+        for key in ("line_height", "letter_spacing"):
+            control = key.replace("_", "-")
+            for direction, sign in (("less", "-"), ("more", "")):
+                button_id = f"{control}-{direction}"
+                with self.subTest(button=button_id):
+                    tag = re.search(
+                        r"<button[^>]*id=\"" + button_id + r"\"[^>]*>",
+                        self.html,
+                    )
+                    self.assertIsNotNone(
+                        tag, f"no {direction} button for {key}"
+                    )
+                    if tag is None:
+                        continue
+                    markup = tag.group(0)
+                    # An explicit type. A button inside a form defaults to
+                    # submit, and the settings panel is deliberately not a
+                    # form, so this is a habit worth keeping.
+                    self.assertIn('type="button"', markup)
+                    target = re.search(r'data-target="([^"]+)"', markup)
+                    self.assertIsNotNone(
+                        target, f"{button_id} does not say which slider it drives"
+                    )
+                    if target is not None:
+                        self.assertEqual(
+                            target.group(1),
+                            control,
+                            f"{button_id} points at the wrong slider",
+                        )
+                    step = re.search(r'data-step="([-\d.]+)"', markup)
+                    self.assertIsNotNone(
+                        step, f"{button_id} does not say which way it moves"
+                    )
+                    if step is not None and sign:
+                        self.assertTrue(
+                            step.group(1).startswith("-"),
+                            f"{button_id} should lower the value",
+                        )
+                    elif step is not None:
+                        self.assertFalse(
+                            step.group(1).startswith("-"),
+                            f"{button_id} should raise the value",
+                        )
+                    # The step must be one notch of the slider it drives, or
+                    # the buttons move by more than the slider does and the
+                    # two disagree about where a value sits.
+                    slider_step = re.search(
+                        r'<input[^>]*id="' + control + r'"[^>]*step="([\d.]+)"',
+                        self.html,
+                    )
+                    if step is not None and slider_step is not None:
+                        self.assertEqual(
+                            abs(float(step.group(1))),
+                            float(slider_step.group(1)),
+                            f"{button_id} moves by a different amount than its slider",
+                        )
+
+    def test_the_stepper_buttons_are_labelled_and_their_glyphs_are_not_read_aloud(self):
+        # The visible glyph is either a minus or a plus. A screen reader
+        # announcing "plus" on its own tells a reader nothing about which
+        # setting it belongs to, so the name comes from aria-label and the
+        # glyph is hidden from it.
+        #
+        # The key is read from the template and the text from the rendered
+        # page, so this checks both halves: that the button asks for a string
+        # that exists, and that the string it gets is real prose rather than
+        # an empty attribute.
+        template = (
+            REPO_ROOT / "src" / "accessible_ide" / "templates" / "index.html"
+        ).read_text(encoding="utf-8")
+        english = i18n.load_catalogue("en")
+
+        for button_id, key in (
+            ("line-height-less", "reading.line_height_less"),
+            ("line-height-more", "reading.line_height_more"),
+            ("letter-spacing-less", "reading.letter_spacing_less"),
+            ("letter-spacing-more", "reading.letter_spacing_more"),
+        ):
+            with self.subTest(button=button_id):
+                source = re.search(
+                    r"<button[^>]*id=\"" + button_id + r"\"[^>]*>",
+                    template,
+                    re.DOTALL,
+                )
+                self.assertIsNotNone(source)
+                if source is not None:
+                    self.assertIn(
+                        f"t('{key}')",
+                        source.group(0),
+                        f"{button_id} should be named by {key}",
+                    )
+                self.assertIn(key, english, f"no English string for {key}")
+
+                rendered = re.search(
+                    r"<button[^>]*id=\"" + button_id + r"\"[^>]*>.*?</button>",
+                    self.html,
+                    re.DOTALL,
+                )
+                self.assertIsNotNone(rendered)
+                if rendered is None:
+                    continue
+                markup = rendered.group(0)
+                label = re.search(r'aria-label="([^"]*)"', markup)
+                self.assertIsNotNone(
+                    label, f"{button_id} has no name for a screen reader"
+                )
+                if label is not None:
+                    self.assertEqual(
+                        label.group(1),
+                        english[key],
+                        f"{button_id} is not named by {key} in English",
+                    )
+                self.assertIn(
+                    'aria-hidden="true"',
+                    markup,
+                    f"{button_id} lets the bare glyph be read aloud",
+                )
+
+    def test_the_stepper_buttons_are_big_enough_to_hit(self):
+        # WCAG 2.1 AA asks for a target of at least 24 by 24 CSS pixels,
+        # and 44 is the figure this project works to everywhere else, so a
+        # button smaller than that is a miss even though it passes the letter
+        # of the standard.
+        block = re.search(
+            r"\.stepper-btn\s*\{([^}]*)\}", self.css, re.DOTALL
+        )
+        self.assertIsNotNone(block, "no .stepper-btn rule in the stylesheet")
+        if block is None:
+            return
+        rules = block.group(1)
+        for dimension in ("min-width", "min-height"):
+            with self.subTest(dimension=dimension):
+                declared = re.search(dimension + r":\s*(\d+)px", rules)
+                self.assertIsNotNone(
+                    declared, f".stepper-btn sets no {dimension}"
+                )
+                if declared is not None:
+                    self.assertGreaterEqual(
+                        int(declared.group(1)),
+                        44,
+                        f".stepper-btn {dimension} is under 44px",
+                    )
 
     def test_error_status_is_announced(self):
         # saveConfig reports failures now that the server can reject a

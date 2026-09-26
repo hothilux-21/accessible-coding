@@ -140,9 +140,12 @@ class LocaleRegistry(unittest.TestCase):
 class NoHardcodedStrings(unittest.TestCase):
     """The whole point of the catalogues: no English left in the markup."""
 
-    # An icon written as a numeric HTML entity is not prose, and the version
-    # badge is a fixed string. Everything else between tags must be a t() call.
-    ALLOWED_LITERAL = re.compile(r"^(?:v[\w.-]+|&#\d+;)$")
+    # A character written as an HTML entity is not prose, and the version
+    # badge is a fixed string. Numeric (&#8722;) and named (&minus;) forms
+    # are both allowed, because the stepper buttons need a minus sign and
+    # naming it is far clearer at the point of use than the codepoint.
+    # Everything else between tags must be a t() call.
+    ALLOWED_LITERAL = re.compile(r"^(?:v[\w.-]+|&#\d+;|&[a-zA-Z][a-zA-Z0-9]*;)$")
 
     def test_template_has_no_bare_text_in_body(self):
         html = TEMPLATE.read_text(encoding="utf-8")

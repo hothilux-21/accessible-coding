@@ -671,6 +671,76 @@ body[data-contrast="high"][data-theme="pastel"] {
   cursor: pointer;
 }
 
+/* A slider between two buttons, so the value can be notched along one step
+   at a time. Dragging a thumb is a small target for a shaky hand and a poor
+   one behind a screen magnifier, and the arrow keys only work once the
+   slider itself has focus. The buttons are a second way in, not a
+   replacement: the slider still drags, and still takes arrow keys. */
+.stepper {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px;
+  border: 2px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.stepper:hover {
+  border-color: var(--accent);
+}
+
+/* The focus ring goes on whichever control inside is being used, so a
+   reader can always see which one the arrow keys are about to move. */
+.stepper:focus-within {
+  border-color: var(--accent);
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.stepper input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.stepper-btn {
+  flex: 0 0 auto;
+  /* 44px is the accessible minimum, so the button is usable with a
+     finger, a tremor or a stylus. */
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  font-family: inherit;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--fg);
+  background: var(--panel-bg);
+  border: 2px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.stepper-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.stepper-btn:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* At the end of its travel a button is disabled rather than silently doing
+   nothing, so a reader is told the value cannot go further this way. */
+.stepper-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* ---------- Try it out panel ---------- */
 
 .preview-block {

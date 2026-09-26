@@ -208,7 +208,19 @@
           <div class="field">
             <label for="line-height">{{ t('reading.line_height') }}</label>
             <div class="field-row">
-              <input type="range" id="line-height" min="1" max="2.4" step="0.1" value="{{ config.line_height }}">
+              <div class="stepper">
+                <button type="button" class="stepper-btn" id="line-height-less"
+                        data-target="line-height" data-step="-0.1"
+                        aria-label="{{ t('reading.line_height_less') }}">
+                  <span aria-hidden="true">&minus;</span>
+                </button>
+                <input type="range" id="line-height" min="1" max="2.4" step="0.1" value="{{ config.line_height }}">
+                <button type="button" class="stepper-btn" id="line-height-more"
+                        data-target="line-height" data-step="0.1"
+                        aria-label="{{ t('reading.line_height_more') }}">
+                  <span aria-hidden="true">&plus;</span>
+                </button>
+              </div>
               <output id="line-height-label" class="field-value" for="line-height">{{ config.line_height }}</output>
             </div>
             <p class="field-help">{{ t('reading.line_height_help') }}</p>
@@ -217,7 +229,19 @@
           <div class="field">
             <label for="letter-spacing">{{ t('reading.letter_spacing') }}</label>
             <div class="field-row">
-              <input type="range" id="letter-spacing" min="-0.5" max="4" step="0.1" value="{{ config.letter_spacing }}">
+              <div class="stepper">
+                <button type="button" class="stepper-btn" id="letter-spacing-less"
+                        data-target="letter-spacing" data-step="-0.1"
+                        aria-label="{{ t('reading.letter_spacing_less') }}">
+                  <span aria-hidden="true">&minus;</span>
+                </button>
+                <input type="range" id="letter-spacing" min="-0.5" max="4" step="0.1" value="{{ config.letter_spacing }}">
+                <button type="button" class="stepper-btn" id="letter-spacing-more"
+                        data-target="letter-spacing" data-step="0.1"
+                        aria-label="{{ t('reading.letter_spacing_more') }}">
+                  <span aria-hidden="true">&plus;</span>
+                </button>
+              </div>
               <output id="letter-spacing-label" class="field-value" for="letter-spacing">{{ config.letter_spacing }}px</output>
             </div>
             <p class="field-help">{{ t('reading.letter_spacing_help') }}</p>
