@@ -70,6 +70,11 @@
   var btnReduceMotion = document.getElementById('reduce-motion');
   var reduceMotionState = document.getElementById('reduce-motion-state');
   var btnTestVoice = document.getElementById('btn-test-voice');
+  var autoUpdateEl = document.getElementById('auto-update-toggle');
+  var autoUpdateState = document.getElementById('auto-update-state');
+  var btnCheckUpdate = document.getElementById('btn-check-update');
+  var updateStatus = document.getElementById('update-status');
+  var updateVersion = document.getElementById('update-version');
   var settingsDialog = document.getElementById('settings-dialog');
   var btnSettings = document.getElementById('btn-settings');
   var btnSettingsClose = document.getElementById('btn-settings-close');
@@ -1480,6 +1485,139 @@
       saveConfig({ tts_click_to_speak: ttsClickToSpeak });
     });
   }
+
+
+  // ---------- Updates ----------
+  // Two things live here and they are deliberately not the same thing: the
+  // switch turns the once-a-day background check off, and the button asks
+  // right now. A reader who has switched the check off can still ask, and a
+  // reader who asks always gets an answer.
+  var autoUpdateOn = false;
+  var updateApplicable = false;
+  var updateBusy = false;
+
+  function say(text, isError) {
+    if (!updateStatus) return;
+    updateStatus.textContent = text || '';
+    updateStatus.classList.toggle('is-error', !!isError);
+  }
+
+  function paintAutoUpdateSwitch() {
+    if (!autoUpdateEl) return;
+    autoUpdateEl.setAttribute('aria-checked', autoUpdateOn ? 'true' : 'false');
+    autoUpdateEl.classList.toggle('active', autoUpdateOn);
+    if (autoUpdateState) {
+      autoUpdateState.textContent = autoUpdateOn ? t('speak.on') : t('speak.off');
+    }
+  }
+
+  // A check the reader did not ask for is quiet unless it found something.
+  // The one exception is the website, which cannot update itself at all, and
+  // that is said once so the switch is not a control that does nothing.
+  function reportCheck(result) {
+    if (!result || result.success === false) return;
+    if (!result.applicable) {
+      say(t('update.status_not_applicable'));
+      return;
+    }
+    if (result.update_available) {
+      say(t('update.status_available', result.latest || ''), false);
+      return;
+    }
+    if (result.error === 'checked_recently') return;
+    if (result.error) {
+      // The server sends a sentence already in the reader's language.
+      say(result.error_text || t('update.error_unknown'), true);
+      return;
+    }
+    say(result.manual === false && !autoUpdateOn
+      ? t('update.status_off')
+      : t('update.status_current', result.current || ''));
+  }
+
+  function checkForUpdates(manual) {
+    if (updateBusy) return Promise.resolve(null);
+    updateBusy = true;
+    if (btnCheckUpdate) btnCheckUpdate.disabled = true;
+    if (manual) say(t('update.status_checking'));
+    return fetch('/api/update/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force: !!manual, access_code: accessCode, locale: META.locale })
+    })
+      .then(function (res) {
+        return res.json().then(function (data) {
+          data.manual = !!manual;
+          return data;
+        });
+      })
+      .then(function (data) {
+        reportCheck(data);
+        return data;
+      })
+      .catch(function () {
+        say(t('update.error_network'), true);
+        return null;
+      })
+      .then(function (data) {
+        updateBusy = false;
+        if (btnCheckUpdate) btnCheckUpdate.disabled = false;
+        return data;
+      });
+  }
+
+  function startUpdateSection() {
+    if (!autoUpdateEl) return;
+    autoUpdateOn = autoUpdateEl.getAttribute('aria-checked') === 'true';
+    paintAutoUpdateSwitch();
+
+    fetch('/api/version')
+      .then(function (res) { return res.json(); })
+      .then(function (info) {
+        updateApplicable = !!info.applicable;
+        if (updateVersion) {
+          updateVersion.textContent = t('update.version_line', info.version || '');
+        }
+        if (!updateApplicable) {
+          // Nothing here can change a file on the reader's computer, so the
+          // switch and button would be controls that do nothing. Say so
+          // instead of leaving them looking live.
+          if (autoUpdateEl) autoUpdateEl.disabled = true;
+          if (btnCheckUpdate) btnCheckUpdate.disabled = true;
+          say(t('update.status_not_applicable'));
+          return;
+        }
+        if (autoUpdateOn) checkForUpdates(false);
+      })
+      .catch(function () {
+        if (updateVersion) updateVersion.textContent = '';
+      });
+  }
+
+  if (autoUpdateEl) {
+    autoUpdateEl.addEventListener('click', function () {
+      autoUpdateOn = !autoUpdateOn;
+      paintAutoUpdateSwitch();
+      say('');
+      saveConfig({ auto_update: autoUpdateOn });
+      // Turning it on is a request to start looking, not just to remember a
+      // preference for tomorrow. Turning it off stops asking, and says so.
+      if (autoUpdateOn) {
+        checkForUpdates(false);
+      } else {
+        say(t('update.status_off'));
+      }
+    });
+  }
+
+  if (btnCheckUpdate) {
+    btnCheckUpdate.addEventListener('click', function () {
+      checkForUpdates(true);
+    });
+  }
+
+  startUpdateSection();
+
 
 
   btnTestVoice.addEventListener('click', function () {

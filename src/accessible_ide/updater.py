@@ -76,7 +76,17 @@ _VERSION_RE = re.compile(
 
 
 class UpdateError(Exception):
-    """Something went wrong that the reader can be told about in plain words."""
+    """Something went wrong that the reader can be told about in plain words.
+
+    Every error carries a short ``code`` as well as an English message. The
+    code is what the interface shows, because the interface is translated and
+    an English sentence handed to a reader who reads Hindi is a bug. The
+    message stays for the log and for anyone debugging.
+    """
+
+    def __init__(self, message: str, code: str = 'unknown'):
+        super().__init__(message)
+        self.code = code
 
 
 def is_frozen() -> bool:
@@ -110,10 +120,10 @@ def parse_version(text: str) -> tuple:
     means offering someone a downgrade.
     """
     if not isinstance(text, str):
-        raise UpdateError('version is not text')
+        raise UpdateError('version is not text', code='bad_version')
     match = _VERSION_RE.match(text)
     if match is None:
-        raise UpdateError(f'cannot read the version {text!r}')
+        raise UpdateError(f'cannot read the version {text!r}', code='bad_version')
     major = int(match.group(1))
     minor = int(match.group(2) or 0)
     patch = int(match.group(3) or 0)
@@ -148,13 +158,13 @@ def _allowed_asset_url(url: str) -> str:
     could also point the app at a program of their choosing.
     """
     if not isinstance(url, str):
-        raise UpdateError('the download address is not text')
+        raise UpdateError('the download address is not text', code='bad_url')
     if not url.startswith(f'{RELEASES_BASE}/download/'):
-        raise UpdateError('the download address is not from this project')
+        raise UpdateError('the download address is not from this project', code='bad_url')
     if not url.startswith('https://'):
-        raise UpdateError('the download address is not secure')
+        raise UpdateError('the download address is not secure', code='bad_url')
     if '..' in url:
-        raise UpdateError('the download address is not valid')
+        raise UpdateError('the download address is not valid', code='bad_url')
     return url
 
 
@@ -170,12 +180,12 @@ def _open_url(url: str, timeout: int, accept: str):
         response = urllib.request.urlopen(request, timeout=timeout)
     except urllib.error.HTTPError as error:
         raise UpdateError(
-            f'could not download from GitHub ({error.code})'
+            f'could not download from GitHub ({error.code})', code='network'
         ) from error
     except (urllib.error.URLError, OSError) as error:
         # No network, DNS failure, timed out. Not a problem worth shouting
         # about: the app is offline-first and the reader did not ask.
-        raise UpdateError('could not reach GitHub to check for updates') from error
+        raise UpdateError('could not reach GitHub to check for updates', code='network') from error
     return response
 
 
@@ -188,10 +198,10 @@ def _read_url(url: str, timeout: int, limit: int) -> bytes:
     with _open_url(url, timeout, 'application/json' if url.endswith('.json') else '*/*') as response:
         declared = response.headers.get('Content-Length')
         if declared and declared.isdigit() and int(declared) > limit:
-            raise UpdateError('the file is larger than expected')
+            raise UpdateError('the file is larger than expected', code='too_large')
         data = response.read(limit + 1)
     if len(data) > limit:
-        raise UpdateError('the file is larger than expected')
+        raise UpdateError('the file is larger than expected', code='too_large')
     return data
 
 
@@ -205,16 +215,17 @@ def fetch_manifest(timeout: int = DEFAULT_TIMEOUT) -> dict:
     try:
         manifest = json.loads(raw.decode('utf-8'))
     except (ValueError, UnicodeDecodeError) as error:
-        raise UpdateError('the update information could not be read') from error
+        raise UpdateError('the update information could not be read', code='bad_manifest') from error
     if not isinstance(manifest, dict):
-        raise UpdateError('the update information was not in the expected form')
+        raise UpdateError('the update information was not in the expected form', code='bad_manifest')
     for field in ('version', 'url', 'sha256', 'size'):
         if field not in manifest:
-            raise UpdateError(f'the update information is missing {field}')
+            raise UpdateError(f'the update information is missing {field}',
+                       code='bad_manifest')
     # Checked before anything else uses it.
     _allowed_asset_url(manifest['url'])
     if not isinstance(manifest['version'], str) or not manifest['version']:
-        raise UpdateError('the update information has no version number')
+        raise UpdateError('the update information has no version number', code='bad_manifest')
     return manifest
 
 
@@ -263,16 +274,19 @@ def check(force: bool = False) -> dict:
         'current': current_version(),
         'update_available': False,
         'error': '',
+        'error_code': '',
     }
     if not result['applicable']:
         return result
     if not should_check(force):
         result['error'] = 'checked_recently'
+        result['error_code'] = 'checked_recently'
         return result
     try:
         manifest = fetch_manifest()
     except UpdateError as error:
         result['error'] = str(error)
+        result['error_code'] = error.code
         return result
     remember_check()
     result['latest'] = manifest['version']
@@ -311,7 +325,7 @@ def stage(manifest: dict) -> Path:
     url = _allowed_asset_url(manifest['url'])
     wanted_sha = str(manifest['sha256']).strip().lower()
     if not re.fullmatch(r'[0-9a-f]{64}', wanted_sha):
-        raise UpdateError('the update information has no usable checksum')
+        raise UpdateError('the update information has no usable checksum', code='no_checksum')
 
     target = update_dir() / manifest['url'].rsplit('/', 1)[-1]
     temporary = target.with_suffix('.part')
@@ -327,17 +341,17 @@ def stage(manifest: dict) -> Path:
                     break
                 written += len(chunk)
                 if written > MAX_DOWNLOAD_BYTES:
-                    raise UpdateError('the downloaded file is larger than expected')
+                    raise UpdateError('the downloaded file is larger than expected', code='too_large')
                 digest.update(chunk)
                 handle.write(chunk)
 
     if written == 0:
-        raise UpdateError('nothing was downloaded')
+        raise UpdateError('nothing was downloaded', code='download_failed')
     expected_size = manifest.get('size')
     if isinstance(expected_size, int) and expected_size and written != expected_size:
-        raise UpdateError('the downloaded file is the wrong size')
+        raise UpdateError('the downloaded file is the wrong size', code='download_failed')
     if digest.hexdigest() != wanted_sha:
-        raise UpdateError('the downloaded file did not match its checksum')
+        raise UpdateError('the downloaded file did not match its checksum', code='checksum_failed')
 
     os.replace(temporary, target)
     return target
@@ -356,9 +370,9 @@ def install(staged: Path, relaunch: bool = False) -> bool:
     downloaded build in place for the reader to run themselves.
     """
     if not is_frozen():
-        raise UpdateError('updates only apply to the packaged app')
+        raise UpdateError('updates only apply to the packaged app', code='not_applicable')
     if not staged.is_file():
-        raise UpdateError('the downloaded build is missing')
+        raise UpdateError('the downloaded build is missing', code='missing_build')
     target = Path(sys.executable)
     helper = update_dir() / f'updater-{os.getpid()}.exe'
     try:
@@ -368,7 +382,7 @@ def install(staged: Path, relaunch: bool = False) -> bool:
         # name and the real file is free by the time it swaps.
         _copy(target, helper)
     except OSError as error:
-        raise UpdateError('the update could not be prepared') from error
+        raise UpdateError('the update could not be prepared', code='prepare_failed') from error
 
     command = [
         str(helper), '--apply-update',
@@ -386,7 +400,7 @@ def install(staged: Path, relaunch: bool = False) -> bool:
         )
     except OSError as error:
         helper.unlink(missing_ok=True)
-        raise UpdateError('the update could not be started') from error
+        raise UpdateError('the update could not be started', code='start_failed') from error
     return True
 
 

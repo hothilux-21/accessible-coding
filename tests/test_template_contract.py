@@ -29,6 +29,7 @@ APP_JS = REPO_ROOT / "src" / "accessible_ide" / "static" / "js" / "app.js"
 STYLESHEET = (
     REPO_ROOT / "src" / "accessible_ide" / "static" / "css" / "style.css"
 )
+INDEX_TEMPLATE = REPO_ROOT / "src" / "accessible_ide" / "templates" / "index.html"
 
 # Controls the settings panel is expected to provide. Listed separately
 # from the automatic scan so a missing control produces a clear message
@@ -439,6 +440,112 @@ class TemplateContractTests(RenderedPageFixture):
         self.assertIn("aria-live", self.html)
         self.assertIn("reportSaveError", self.js)
         self.assertIn("res.ok", self.js)
+
+
+class UpdatePanelTests(RenderedPageFixture):
+    """The Updates section of the settings panel."""
+
+    def group_template(self):
+        """The group as written, before the {{ t(...) }} calls are resolved.
+
+        Assertions about which catalogue keys a word asks for have to look
+        here. The rendered page is English by definition, so asking it
+        whether a key was used would pass for the wrong reason.
+        """
+        return self._slice(INDEX_TEMPLATE.read_text(encoding="utf-8"))
+
+    def group_markup(self):
+        """The group as a reader sees it, in English with default settings."""
+        return self._slice(self.html)
+
+    @staticmethod
+    def _slice(text):
+        start = text.find('id="auto-update-toggle"')
+        if start == -1:
+            return ""
+        open_tag = text.rfind("<fieldset", 0, start)
+        close_tag = text.find("</fieldset>", start)
+        return text[open_tag:close_tag] if close_tag != -1 else ""
+
+    def test_the_group_is_present(self):
+        self.assertNotEqual(
+            self.group_markup(), "", "no auto-update switch in the settings panel")
+
+    def test_the_group_is_in_the_settings_dialog(self):
+        dialog = re.search(
+            r'<dialog id="settings-dialog".*?</dialog>', self.html, re.DOTALL
+        )
+        self.assertIsNotNone(dialog, "no settings dialog")
+        if dialog is not None:
+            inside = dialog.group(0)
+            self.assertIn('id="auto-update-toggle"', inside)
+            self.assertIn('id="btn-check-update"', inside)
+
+    def test_the_switch_is_labelled_and_described(self):
+        markup = self.group_markup()
+        self.assertIn('id="auto-update-toggle"', markup)
+        # A role=switch with no accessible name is a control a screen reader
+        # announces as just "switch".
+        self.assertRegex(markup, r'<label for="auto-update-toggle">')
+        self.assertIn('aria-describedby="auto-update-help"', markup)
+        self.assertIn('id="auto-update-help"', markup)
+        self.assertIn('role="switch"', markup)
+        self.assertIn("aria-checked=", markup)
+
+    def test_the_switch_state_is_shown_in_words_not_only_drawn(self):
+        # The track and thumb are aria-hidden, so a reader who cannot see the
+        # switch has only the words beside it. Both states have to be
+        # spelled out, or the switch is silent when it is off.
+        markup = self.group_template()
+        self.assertIn('id="auto-update-state"', markup)
+        self.assertIn("speak.on", markup)
+        self.assertIn("speak.off", markup)
+
+    def test_the_check_button_is_labelled_and_described(self):
+        markup = self.group_markup()
+        self.assertIn('id="btn-check-update"', markup)
+        # A button carrying only an icon would be unnamed. This one has words.
+        self.assertIn("Check now", markup)
+        self.assertIn('aria-describedby="update-check-label"', markup)
+        self.assertIn('id="update-check-label"', markup)
+
+    def test_the_answer_to_a_check_is_announced(self):
+        # The reader has to be told the outcome without hunting for it, and
+        # without focus being dragged away from what they were doing.
+        markup = self.group_markup()
+        self.assertIn('id="update-status"', markup)
+        self.assertIn('aria-live="polite"', markup)
+        self.assertIn('role="status"', markup)
+
+    def test_the_running_version_is_shown(self):
+        # The element is empty in the page because the version is not known
+        # until the server answers; app.js fills it. So the test is split:
+        # the place to put it, and the key used to word it.
+        self.assertIn('id="update-version"', self.group_template())
+        self.assertIn("update-version", self.js)
+        self.assertIn("update.version_line", self.js)
+        # /api/version, so the page is not guessing the number.
+        self.assertIn("/api/version", self.js)
+
+    def test_nothing_in_the_group_is_bare_english(self):
+        # Checked against the template rather than the rendered page, because
+        # the rendered page is English by definition and would fail for the
+        # wrong reason. What matters is that every visible word is asked for
+        # by name, so it can be given a translation.
+        markup = self.group_template()
+        self.assertNotEqual(markup, "", "no Updates group in the template")
+        for text in re.findall(r">([^<>{}]+)<", markup):
+            cleaned = text.strip()
+            if not cleaned:
+                continue
+            with self.subTest(text=cleaned):
+                self.fail(f"literal text in the Updates group: {cleaned!r}")
+
+    def test_the_switch_and_the_button_are_told_apart_in_the_code(self):
+        # They do different things. Collapsing them into one control would
+        # make "off" mean "no updates ever" instead of "not by itself".
+        self.assertIn("checkForUpdates", self.js)
+        self.assertIn("force: !!manual", self.js)
 
 
 class TryItOutPanelTests(RenderedPageFixture):

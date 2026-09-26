@@ -12,6 +12,7 @@ module-level globals, so both are repointed at a temporary directory here.
 
 import os
 import pathlib
+import re
 import sys
 import tempfile
 import unittest
@@ -21,7 +22,7 @@ SRC = str(REPO_ROOT / "src")
 if SRC not in sys.path:
     sys.path.append(SRC)
 
-from accessible_ide import create_app, routes, updater  # noqa: E402
+from accessible_ide import create_app, i18n, routes, updater  # noqa: E402
 
 
 class UpdateEndpointTestCase(unittest.TestCase):
@@ -74,9 +75,10 @@ class UpdateEndpointTestCase(unittest.TestCase):
         self.patch(updater, "fetch_manifest",
                    lambda *a, **k: self.fake_manifest(version, **extra))
 
-    def fail_manifest(self, message="could not reach GitHub to check for updates"):
+    def fail_manifest(self, message="could not reach GitHub to check for updates",
+                      code="network"):
         def explode(*args, **kwargs):
-            raise updater.UpdateError(message)
+            raise updater.UpdateError(message, code=code)
         self.patch(updater, "fetch_manifest", explode)
 
     def check(self, **payload):
@@ -191,6 +193,57 @@ class UpdateCheckIntervalTests(UpdateEndpointTestCase):
         # Forced, so the interval is ignored and the error surfaces.
         self.assertIn("should not have been called",
                       self.check(force=True).get_json()["error"])
+
+
+class ErrorTextTests(UpdateEndpointTestCase):
+    """The sentence the reader sees must be in the reader's language.
+
+    The updater raises English text on purpose, because that is what belongs
+    in a log. Handing it to the interface would put an English sentence in
+    front of a reader who reads Hindi, so the code is looked up in the
+    catalogue and the code is what travels.
+    """
+
+    def test_a_failure_is_sent_as_a_translated_sentence(self):
+        self.fail_manifest()
+        body = self.check(force=True, locale="fr").get_json()
+        self.assertEqual(body["error_code"], "network")
+        self.assertEqual(body["error_text"], i18n.make_translator("fr")("update.error_network"))
+        self.assertNotEqual(body["error_text"], body["error"])
+
+    def test_the_same_failure_reads_differently_in_each_language(self):
+        self.fail_manifest()
+        sentences = set()
+        for locale in ("en", "hi", "fr", "es", "ar"):
+            body = self.check(force=True, locale=locale).get_json()
+            sentences.add(body["error_text"])
+        self.assertEqual(len(sentences), 5)
+
+    def test_every_code_the_updater_raises_has_a_sentence(self):
+        # A new kind of failure added to updater.py must not reach the
+        # interface as a raw code. The updater is scanned rather than the
+        # mapping being trusted, because the mapping is the thing that gets
+        # forgotten when the error is the thing being added.
+        source = (pathlib.Path(updater.__file__)).read_text(encoding="utf-8")
+        codes = set(re.findall(r"code=['\"]([\w]+)['\"]", source))
+        self.assertIn("network", codes)
+        unmapped = codes - set(routes.UPDATE_ERROR_KEYS)
+        self.assertEqual(unmapped, set(),
+                         f"these codes have no sentence: {sorted(unmapped)}")
+
+    def test_every_mapped_key_exists_in_every_language(self):
+        for locale in ("en", "hi", "fr", "es", "ar"):
+            for key in routes.UPDATE_ERROR_KEYS.values():
+                with self.subTest(locale=locale, key=key):
+                    self.assertTrue(i18n.make_translator(locale)(key))
+
+    def test_an_unknown_code_still_produces_a_sentence(self):
+        self.patch(updater, "fetch_manifest",
+                   lambda *a, **k: (_ for _ in ()).throw(
+                       updater.UpdateError("something new", code="brand_new")))
+        body = self.check(force=True, locale="fr").get_json()
+        self.assertEqual(body["error_code"], "brand_new")
+        self.assertEqual(body["error_text"], i18n.make_translator("fr")("update.error_unknown"))
 
 
 class AccessCodeTests(UpdateEndpointTestCase):

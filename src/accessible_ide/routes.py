@@ -312,6 +312,27 @@ def request_locale(data):
     return i18n.normalise(load_config().get('locale')) or i18n.DEFAULT_LOCALE
 
 
+# Which sentence to show for each way an update can go wrong. The updater
+# itself knows only the short code, so this is the single place a new kind of
+# failure is given words in five languages.
+UPDATE_ERROR_KEYS = {
+    'network': 'update.error_network',
+    'too_large': 'update.error_too_large',
+    'bad_manifest': 'update.error_bad_manifest',
+    'no_checksum': 'update.error_no_checksum',
+    'download_failed': 'update.error_download_failed',
+    'checksum_failed': 'update.error_checksum',
+    'not_applicable': 'update.error_not_applicable',
+    'missing_build': 'update.error_missing_build',
+    'prepare_failed': 'update.error_prepare',
+    'start_failed': 'update.error_start',
+    'bad_version': 'update.error_bad_version',
+    'bad_url': 'update.error_bad_url',
+    'checked_recently': 'update.error_checked_recently',
+    'unknown': 'update.error_unknown',
+}
+
+
 def save_config(config):
     """Save user configuration to JSON file."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -744,6 +765,15 @@ def update_check_api():
     result = updater.check(force=asked)
     result['success'] = True
     result['automatic'] = not asked
+    # The updater raises English sentences; the reader is reading one of five
+    # languages. The code is looked up in the catalogue so the sentence that
+    # reaches the screen is in the reader's own words. The English text stays
+    # in the field only when a code has no catalogue entry, which is a bug
+    # worth seeing rather than a sentence worth showing.
+    code = result.get('error_code') or ''
+    if code:
+        key = UPDATE_ERROR_KEYS.get(code, 'update.error_unknown')
+        result['error_text'] = t(key)
     return jsonify(result)
 
 

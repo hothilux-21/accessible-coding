@@ -31,6 +31,8 @@ const KNOWN_IDS = new Set([
   'tts-voice-gender', 'tts-hover-scope', 'tts-hover-delay',
   'tts-hover-delay-label', 'tts-click', 'tts-click-state',
   'btn-test-voice',
+  'auto-update-toggle', 'auto-update-state', 'btn-check-update',
+  'update-status', 'update-version',
   'font-bundled-note', 'sample-text', 'font-preview', 'font-preview-text',
   'preview-status', 'swatches', 'code-color-hex', 'code-color-picker',
   'colour-error', 'btn-reset-colour',
@@ -506,6 +508,17 @@ function fakeEventFor(page) {
 
 const fetchCalls = [];
 const configPosts = [];
+// The bodies sent to the update check, so a check can be told apart from a
+// forced one.
+const updateCheckBodies = [];
+// What the server answers with. Held in a variable so a check can change it
+// and prove what the app says when the check fails - which is the path that
+// matters most and the one a passing stub would otherwise never reach.
+let updateCheckReply = {
+  success: true, applicable: true, current: '0.2.2-beta',
+  update_available: false, error: '', error_code: '', error_text: '',
+  automatic: true,
+};
 // Every utterance the app asked for, in order. Without this the harness
 // can only prove the app ran, not that it said anything.
 const spokenUtterances = [];
@@ -526,6 +539,28 @@ function fetchStub(url, options) {
     } catch (error) {
       configPosts.push({ __unparseable: String(options.body) });
     }
+  }
+  // The update endpoints get real answers, or the panel would take the
+  // "this is the website, it cannot update itself" branch on every run and
+  // the switch and button would never be exercised.
+  if (String(url).includes('/api/version')) {
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ version: '0.2.2-beta', applicable: true }),
+    });
+  }
+  if (String(url).includes('/api/update/check')) {
+    if (options && options.body) {
+      try {
+        updateCheckBodies.push(JSON.parse(options.body));
+      } catch (error) {
+        updateCheckBodies.push({ __unparseable: String(options.body) });
+      }
+    }
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve(Object.assign({}, updateCheckReply)),
+    });
   }
   return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
 }
@@ -587,6 +622,8 @@ const interactions = [
   ['tts-click', 'click'],
   ['tts-rate', 'input'], ['tts-rate', 'change'],
   ['btn-test-voice', 'click'],
+  ['auto-update-toggle', 'click'],
+  ['btn-check-update', 'click'],
   ['btn-settings', 'click'], ['btn-settings-close', 'click'],
   ['settings-dialog', 'cancel'],
   ['sample-text', 'input'],
@@ -1196,7 +1233,124 @@ function runSpeechChecks() {
     }
   }
 
-  process.exit(failed ? 1 : 0);
+  runUpdateChecks();
+
+  // The last update check settles a promise of its own, so the exit waits for
+  // it rather than cutting it off.
+  setTimeout(() => process.exit(failed ? 1 : 0), 40);
+}
+
+// ---------------------------------------------------------------------------
+// Updates. The promises in app.js have to settle before the status paragraph
+// says anything, so these run after a tick rather than inline.
+// ---------------------------------------------------------------------------
+function runUpdateChecks() {
+  if (!fetchCalls.includes('/api/version')) {
+    failed = true;
+    console.log('FAIL the app never asked what version it is');
+  } else {
+    console.log('     the app asks the server which version is running');
+  }
+
+  // The switch was pressed once by the firing loop, so it went from the
+  // default (on) to off and said so in the settings file.
+  const autoSaved = configPosts.filter((p) => 'auto_update' in p);
+  if (!autoSaved.length || autoSaved[autoSaved.length - 1].auto_update !== false) {
+    failed = true;
+    console.log('FAIL turning the automatic check off was not saved: ' +
+      JSON.stringify(autoSaved));
+  } else {
+    console.log('     the automatic-check switch is saved');
+  }
+
+  const autoEl = elements.get('auto-update-toggle');
+  if (autoEl.getAttribute('aria-checked') !== 'false') {
+    failed = true;
+    console.log('FAIL the switch says it is on after being turned off');
+  } else {
+    console.log('     the switch state is announced, not just drawn');
+  }
+
+  // A check the reader asked for has to be forced, or the once-a-day limit
+  // would answer "already checked" to a direct question.
+  const checkCalls = fetchCalls.filter((u) => String(u).includes('/api/update/check'));
+  if (!checkCalls.length) {
+    failed = true;
+    console.log('FAIL the update check was never asked for');
+  } else {
+    console.log('     the check button asks the server');
+  }
+
+  const forced = updateCheckBodies.filter((b) => b.force === true);
+  if (!forced.length) {
+    failed = true;
+    console.log('FAIL no check was forced, so the button would be ignored ' +
+      'when a check was done recently');
+  } else {
+    console.log('     a check the reader asked for ignores the wait');
+  }
+
+  const status = elements.get('update-status');
+  const said = status.textContent || '';
+  if (!said) {
+    failed = true;
+    console.log('FAIL the check finished without saying anything');
+  } else if (said.indexOf('update.') === 0) {
+    failed = true;
+    console.log('FAIL the status shows a raw key rather than a sentence: ' + said);
+  } else {
+    console.log('     the answer to a check is a translated sentence');
+  }
+
+  const versionLine = elements.get('update-version');
+  if (!versionLine.textContent) {
+    failed = true;
+    console.log('FAIL the running version is not shown');
+  } else if (versionLine.textContent.indexOf('0.2.2-beta') === -1) {
+    failed = true;
+    console.log('FAIL the version line does not name the version: ' + versionLine.textContent);
+  } else {
+    console.log('     the running version is shown to the reader');
+  }
+
+  // A check that fails has to produce a sentence in the reader's language.
+  // The server sends one; the app must show that sentence rather than the
+  // short code, the English text meant for the log, or nothing at all.
+  updateCheckReply = {
+    success: true, applicable: true, current: '0.2.2-beta',
+    update_available: false,
+    error: 'could not reach GitHub to check for updates',
+    error_code: 'network',
+    error_text: CATALOGUE['update.error_network'],
+    automatic: false,
+  };
+  status.textContent = '';
+  fire('btn-check-update', 'click');
+
+  setTimeout(() => {
+    const saidOnFailure = status.textContent || '';
+    if (saidOnFailure !== CATALOGUE['update.error_network']) {
+      failed = true;
+      console.log('FAIL a failed check did not show the sentence the server sent: ' +
+        JSON.stringify(saidOnFailure));
+    } else if (saidOnFailure === updateCheckReply.error) {
+      // The updater's own English text is for the log. Showing it means the
+      // reader is being handed a debug string instead of a sentence.
+      failed = true;
+      console.log('FAIL the reader is shown the English text meant for the log');
+    } else if (saidOnFailure === updateCheckReply.error_code) {
+      failed = true;
+      console.log('FAIL the reader is shown the short code instead of a sentence');
+    } else {
+      console.log('     a failed check is explained in the reader\'s language');
+    }
+    if (!status.classList.contains('is-error')) {
+      failed = true;
+      console.log('FAIL a failed check is not marked as a problem');
+    } else {
+      console.log('     a failed check is marked as a problem, not just worded');
+    }
+  }, 10);
 }
 
 // Change the preferred gender on a page of its own, as a reader would.
